@@ -33,6 +33,20 @@ A clean, modern, zero-dependency Chrome extension (Manifest V3) combining a cust
    - Streams live timer to a native OS Picture-in-Picture pop-out window floating over all desktop applications.
    - Redirects distracting domains during Focus phases to a calming "Stay Focused" page via `declarativeNetRequest`.
 
+6. **Task Labels & Quick-Pick Chips**:
+   - Optional "What are you working on?" input before and during focus sessions.
+   - Automatically remembers the last 5 task labels as convenient 1-click quick-pick chips.
+   - Displays the truncated task label in the popup centerpiece, docked top pill tooltip, and PiP window.
+
+7. **Statistics Dashboard, Streaks & Visual Analytics**:
+   - Dedicated stats page (`stats/stats.html`) accessible from both popup and options.
+   - Today's focus progress toward your customizable daily goal (`dailyGoalMinutes`, default 120m).
+   - Current and longest streak tracking with local date boundary handling (streaks stay alive until midnight).
+   - Last 7 days plain SVG bar chart with daily goal reference line and hover tooltips.
+   - 30-day summary metrics and activity matrix.
+   - Top tasks/labels breakdown ranked by total focus time and percentage share.
+   - CSV export and one-click stats reset with confirmation.
+
 ---
 
 ## 🚀 How to Install and Run (for Beginners)
@@ -52,25 +66,33 @@ A clean, modern, zero-dependency Chrome extension (Manifest V3) combining a cust
 pomodo-timer-extension/
 ├── manifest.json              # Manifest V3 configuration & permissions
 ├── background/
-│   └── service-worker.js      # Alarms, notifications, DNR blocking rules, badge updates
+│   └── service-worker.js      # Alarms, idempotent session logs, DNR rules, badge updates
 ├── content/
-│   ├── content.js             # In-page draggable floating widget (Shadow DOM)
-│   └── content.css            # Isolated widget styles
+│   ├── content.js             # Docked top notch pill & tab title countdown
+│   └── content.css            # Isolated notch styles
 ├── popup/
-│   ├── popup.html             # Main extension popup interface
+│   ├── popup.html             # Popup interface with task label input & quick chips
 │   ├── popup.css              # Glassmorphic dark/light UI
-│   └── popup.js               # Timer math, controls, and canvas PiP stream
+│   └── popup.js               # Timer math, label management, and PiP stream
 ├── options/
-│   ├── options.html           # Settings dashboard
+│   ├── options.html           # Settings dashboard & daily goal configuration
 │   ├── options.css            # Settings stylesheet
-│   └── options.js             # Manage durations, presets, and blocked domains
+│   └── options.js             # Manage durations, daily goal, presets, blocked domains
+├── stats/
+│   ├── stats.html             # Analytics dashboard
+│   ├── stats.css              # Glassmorphic stats layout & SVG chart styling
+│   └── stats.js               # KPI calculations, plain SVG bar chart, CSV export
 ├── blocked/
 │   ├── blocked.html           # "Stay Focused" redirect page
 │   ├── blocked.css            # Blocked page design
 │   └── blocked.js             # Live countdown and referrer redirection
 ├── shared/
 │   ├── storage.js             # Shared storage helpers & default config
+│   ├── stats.js               # Pure streak, aggregation, top label, and CSV functions
 │   └── sound.js               # Audio synthesis for transition chimes (Web Audio API)
+├── test/
+│   ├── stats.test.js          # Unit tests for streaks, timezones, and aggregations
+│   └── session-log.test.js    # Unit tests for session log idempotency and pruning
 └── icons/
     ├── icon16.png
     ├── icon32.png
