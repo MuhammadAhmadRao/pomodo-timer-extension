@@ -266,6 +266,32 @@
     }
   });
 
+  // Open Chrome shortcuts settings page
+  const btnConfigureShortcuts = document.getElementById("btn-configure-shortcuts");
+  if (btnConfigureShortcuts) {
+    btnConfigureShortcuts.addEventListener("click", () => {
+      chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
+    });
+  }
+
+  // Load registered shortcuts from Chrome commands API
+  function loadRegisteredShortcuts() {
+    if (chrome.commands && chrome.commands.getAll) {
+      chrome.commands.getAll((commands) => {
+        if (!Array.isArray(commands)) return;
+        commands.forEach((cmd) => {
+          if (cmd.name === "toggle-timer" && cmd.shortcut) {
+            const el = document.getElementById("key-toggle");
+            if (el) el.textContent = cmd.shortcut;
+          } else if (cmd.name === "skip-phase" && cmd.shortcut) {
+            const el = document.getElementById("key-skip");
+            if (el) el.textContent = cmd.shortcut;
+          }
+        });
+      });
+    }
+  }
+
   function showToast(text = "Preferences saved") {
     saveToast.textContent = text;
     saveToast.classList.add("visible");
@@ -275,4 +301,5 @@
   }
 
   init();
+  loadRegisteredShortcuts();
 })();

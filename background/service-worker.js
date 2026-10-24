@@ -70,6 +70,17 @@ async function recordSession(entry) {
 chrome.runtime.onInstalled.addListener(async () => {
   await initializeStorage();
   await syncRulesAndBadge();
+
+  // Create context menu item on install (not on every SW wake-up)
+  if (chrome.contextMenus) {
+    chrome.contextMenus.create({
+      id: "block-current-site",
+      title: "Block this site during focus",
+      contexts: ["page"]
+    }, () => {
+      if (chrome.runtime.lastError) {}
+    });
+  }
 });
 
 chrome.runtime.onStartup.addListener(async () => {
@@ -498,6 +509,23 @@ async function syncRulesAndBadge() {
   } else {
     chrome.alarms.clear(BADGE_BACKUP_ALARM);
   }
+
+  // Update context menu item state during strict focus
+  if (chrome.contextMenus && chrome.contextMenus.update) {
+    const isStrictFocus = Boolean(
+      settings.strictModeEnabled &&
+      timerState.isRunning &&
+      timerState.phase === "focus"
+    );
+    chrome.contextMenus.update("block-current-site", {
+      enabled: !isStrictFocus,
+      title: isStrictFocus
+        ? "Block this site during focus (Disabled in Strict Mode)"
+        : "Block this site during focus"
+    }, () => {
+      if (chrome.runtime.lastError) {}
+    });
+  }
 }
 
 /**
@@ -832,3 +860,206 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
     }
   }
 });
+
+/**
+ * Context Menu: "Block this site during focus"
+ */
+if (chrome.contextMenus && chrome.contextMenus.onClicked) {
+  chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    if (info.menuItemId !== "block-current-site") return;
+
+    const { settings = FocusTimerStorage.DEFAULT_SETTINGS, timerState = FocusTimerStorage.DEFAULT_TIMER_STATE } =
+      await FocusTimerStorage.getStorage(["settings", "timerState"]);
+
+    const isStrictFocus = Boolean(
+      settings.strictModeEnabled &&
+      timerState.isRunning &&
+      timerState.phase === "focus"
+    );
+
+    // Reject in Strict Mode during running focus
+    if (isStrictFocus) {
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+        title: "🔒 Strict Mode Active",
+        message: "Cannot modify blocklist while a strict focus session is running.",
+        priority: 2
+      });
+      return;
+    }
+
+    const pageUrl = tab?.url || info.pageUrl || "";
+
+    // Ignore chrome://, extension pages, and non-http(s) pages
+    if (!pageUrl || !/^https?:\/\//i.test(pageUrl)) {
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+        title: "Focus Timer",
+        message: "Cannot block internal browser or extension pages.",
+        priority: 1
+      });
+      return;
+    }
+
+    let domain = "";
+    try {
+      const parsed = new URL(pageUrl);
+      domain = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    } catch (e) {
+      return;
+    }
+
+    if (!domain) return;
+
+    const currentBlocked = [...(settings.blockedSites || [])];
+    const isDuplicate = currentBlocked.some(
+      (site) => site.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "") === domain
+    );
+
+    if (isDuplicate) {
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+        title: "Focus Timer",
+        message: `${domain} is already in your blocklist.`,
+        priority: 1
+      });
+      return;
+    }
+
+    // Add normalized domain to blocklist
+    currentBlocked.push(domain);
+    const updatedSettings = {
+      ...settings,
+      blockedSites: currentBlocked
+    };
+
+    await FocusTimerStorage.setStorage({ settings: updatedSettings });
+    await syncRulesAndBadge();
+
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+      title: "🛡️ Site Blocked",
+      message: `${domain} will now be blocked during focus sessions.`,
+      priority: 1
+    });
+  });
+}
+
+/**
+ * Keyboard Shortcuts (manifest commands)
+ */
+if (chrome.commands && chrome.commands.onCommand) {
+  chrome.commands.onCommand.addListener(async (command) => {
+    const { settings = FocusTimerStorage.DEFAULT_SETTINGS, timerState = FocusTimerStorage.DEFAULT_TIMER_STATE } =
+      await FocusTimerStorage.getStorage(["settings", "timerState"]);
+
+    const isStrictFocus = Boolean(
+      settings.strictModeEnabled &&
+      timerState.isRunning &&
+      timerState.phase === "focus"
+    );
+
+    if (command === "toggle-timer") {
+      if (timerState.isRunning) {
+        // Attempting to pause
+        if (isStrictFocus) {
+          chrome.notifications.create({
+            type: "basic",
+            iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+            title: "🔒 Strict Mode Active",
+            message: "Pausing is disabled during a strict focus session.",
+            priority: 2
+          });
+          return;
+        }
+
+        const remaining = Math.max(0, (timerState.endTime || 0) - Date.now());
+        const updated = {
+          ...timerState,
+          isStarted: true,
+          isRunning: false,
+          remainingWhenPaused: remaining,
+          endTime: null
+        };
+
+        await chrome.alarms.clear(ALARM_NAME);
+        await FocusTimerStorage.setStorage({ timerState: updated });
+        await syncRulesAndBadge();
+      } else {
+        // Attempting to start/resume
+        const remaining = timerState.remainingWhenPaused || (settings.focusDuration * 60 * 1000);
+        const endTime = Date.now() + remaining;
+        const isFocus = timerState.phase === "focus";
+
+        let sessionId = timerState.sessionId;
+        let sessionStartedAt = timerState.sessionStartedAt;
+        let plannedMs = timerState.plannedMs;
+
+        if (isFocus && (!sessionId || !timerState.isStarted)) {
+          sessionId = "sess_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+          sessionStartedAt = Date.now();
+          plannedMs = timerState.totalDuration || remaining;
+        }
+
+        const updated = {
+          ...timerState,
+          isStarted: true,
+          isRunning: true,
+          endTime,
+          totalDuration: timerState.totalDuration || remaining,
+          sessionId: isFocus ? sessionId : null,
+          sessionStartedAt: isFocus ? sessionStartedAt : null,
+          plannedMs: isFocus ? plannedMs : null
+        };
+
+        await FocusTimerStorage.setStorage({ timerState: updated });
+        await chrome.alarms.create(ALARM_NAME, { when: endTime });
+        await syncRulesAndBadge();
+      }
+    } else if (command === "skip-phase") {
+      // Attempting to skip
+      if (isStrictFocus) {
+        chrome.notifications.create({
+          type: "basic",
+          iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+          title: "🔒 Strict Mode Active",
+          message: "Skipping is disabled during a strict focus session.",
+          priority: 2
+        });
+        return;
+      }
+
+      await chrome.alarms.clear(ALARM_NAME);
+      await chrome.alarms.clear(TEMP_UNBLOCK_ALARM);
+
+      if (timerState.phase === "focus") {
+        const remaining = timerState.isRunning
+          ? Math.max(0, (timerState.endTime || 0) - Date.now())
+          : (timerState.remainingWhenPaused || 0);
+        const total = timerState.totalDuration || (settings.focusDuration * 60 * 1000);
+        const focusedMs = Math.max(0, total - remaining);
+
+        if (focusedMs >= 60000 && timerState.sessionId) {
+          const endedAt = Date.now();
+          const startedAt = timerState.sessionStartedAt || (endedAt - focusedMs);
+          await recordSession({
+            id: timerState.sessionId,
+            startedAt,
+            endedAt,
+            plannedMs: total,
+            focusedMs,
+            completed: false,
+            label: timerState.label || ""
+          });
+        }
+      }
+
+      await handlePhaseCompletion({ isSkip: true });
+    }
+  });
+}
+

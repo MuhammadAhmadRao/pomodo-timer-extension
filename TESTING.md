@@ -32,6 +32,14 @@ Using Node.js test runner (`node --test test/*.test.js`) and headless Chromium (
   - Emergency Exit terminates session, logs incomplete session with actual focused time if $\ge 1$ minute, and resets timer to idle.
   - Emergency Exit ignores brief sessions under 1 minute.
   - Temporary unblock (`ALLOW_5_MINUTES`) sets `tempUnblockUntil` and dynamic rules clear when phase ends.
+- [x] **Keyboard Shortcuts & Context Menu (`test/commands-contextmenu.test.js` - 7 unit tests)**:
+  - Domain normalization extracts clean hosts (e.g. `https://www.reddit.com/r/tech` -> `reddit.com`).
+  - Ignores internal browser pages (`chrome://`, extension pages, `about:blank`, `file://`).
+  - Duplicate blocklist prevention.
+  - Context menu addition locked and rejected during active strict focus.
+  - Keyboard command `toggle-timer` starts and pauses timer when strict mode is off.
+  - Keyboard commands `toggle-timer` (pause) and `skip-phase` are rejected during strict focus.
+  - Keyboard commands operate normally during break phases.
 
 ---
 
@@ -145,17 +153,57 @@ Follow these steps in Google Chrome to visually verify the task label feature an
 
 ---
 
+### F. Verify Keyboard Shortcuts & Context Menu
+1. **Context Menu - Block Normal Website**:
+   - Navigate to any public website (e.g. `https://wikipedia.org`).
+   - Right-click anywhere on the webpage.
+   - Click **"Block this site during focus"**.
+   - Verify a notification appears confirming `wikipedia.org` was added to the blocklist.
+   - Check the Options page: `wikipedia.org` is now listed in the blocklist tags.
+2. **Context Menu - Avoid Duplicates**:
+   - Right-click on the same page again and click **"Block this site during focus"**.
+   - Verify a notification informs you that `wikipedia.org` is already in the blocklist.
+3. **Context Menu - Internal Browser Pages**:
+   - Try right-clicking on `chrome://extensions` or an extension page.
+   - Notice the context menu item either is not displayed (per Chrome security) or displays an alert that internal pages cannot be blocked.
+4. **Context Menu - Strict Mode During Focus**:
+   - Turn Strict Mode ON in Options and start a focus session.
+   - Right-click on any webpage: notice the context menu item is either disabled or says `Block this site during focus (Disabled in Strict Mode)`.
+   - If clicked, an alert confirms that the blocklist cannot be modified during strict focus.
+5. **Keyboard Shortcuts - Toggle Timer (`Alt+Shift+P` / `⌥+Shift+P`)**:
+   - While idle on any webpage, press `Alt+Shift+P`.
+   - Verify the timer starts (badge turns red and begins counting down).
+   - Press `Alt+Shift+P` again: verify the timer pauses (badge turns grey).
+6. **Keyboard Shortcuts - Skip Phase (`Alt+Shift+S` / `⌥+Shift+S`)**:
+   - While timer is running, press `Alt+Shift+S`.
+   - Verify the session completes and automatically switches to Break (badge turns green).
+7. **Keyboard Shortcuts - Strict Mode Enforcement**:
+   - Turn Strict Mode ON and start a focus session.
+   - Press `Alt+Shift+P` (attempt to pause): verify a desktop notification alerts that pausing is disabled in strict mode. The timer keeps running.
+   - Press `Alt+Shift+S` (attempt to skip): verify a desktop notification alerts that skipping is disabled in strict mode. The timer keeps running.
+8. **Shortcuts Link in Options**:
+   - Open Options page (`options/options.html`).
+   - In Section 4 (Keyboard Shortcuts), verify the registered shortcuts are displayed.
+   - Click the **"⚙️ Customize Shortcuts"** button: verify it opens `chrome://extensions/shortcuts` in a new tab.
+
+---
+
 ## 3. What Could NOT Be Automatically Verified
 
 While automated Node.js unit tests and headless Chrome verified data math, state transitions, storage persistence, and message rejection, the following require real human visual inspection and physical environment checks:
 
-1. **OS-Level System Sleep and Wake Transitions**:
+1. **Physical Keyboard Shortcut Event Dispatches in the OS**:
+   - While the command handlers in the service worker were unit-tested, physical OS keyboard hardware dispatching `Alt+Shift+P` and `Alt+Shift+S` to Chrome across different window focus states requires physical manual testing.
+2. **Native Right-Click Context Menu Visual Rendering**:
+   - The native OS right-click popup menu rendered by the Chrome browser interface cannot be visually screenshotted or clicked in headless mode without a desktop GUI session.
+3. **OS-Level System Sleep and Wake Transitions**:
    - We verified mathematically that timer calculations use absolute timestamps (`endTime = Date.now() + duration`), ensuring elapsed time survives background suspension. However, actual OS power-state transitions (putting Mac/PC to sleep mid-focus for 10 minutes and waking it) require physical testing.
-2. **Physical Browser / OS Restart Mid-Focus**:
+4. **Physical Browser / OS Restart Mid-Focus**:
    - Verifying that closing the Chrome browser application completely during a strict focus session and relaunching it preserves the locked state requires an interactive browser session.
-3. **Native Extension Uninstall / Disable Bypass**:
+5. **Native Extension Uninstall / Disable Bypass**:
    - Chrome does not permit extensions to restrict or disable access to `chrome://extensions`. Consequently, users can technically bypass Strict Mode by disabling the extension in Chrome settings.
-4. **Native Audio Chime Output**:
+6. **Native Audio Chime Output**:
    - The Web Audio API synthesizer node connections are tested, but actual acoustic perception through speakers requires human verification.
+
 
 

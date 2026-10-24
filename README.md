@@ -55,6 +55,24 @@ A clean, modern, zero-dependency Chrome extension (Manifest V3) combining a cust
    - **Blocked Page Friction**: "Allow 5 Minutes" temporary unblock button requires a 20-second cooldown wait, and is completely hidden when Strict Mode is enabled.
    - **Honest Limitation**: Chrome does not allow browser extensions to prevent users from disabling or uninstalling them. While Strict Mode locks all extension controls, web pages, and background messages, it can still be bypassed by navigating to `chrome://extensions` and toggling the extension off.
 
+9. **Keyboard Shortcuts & Context Menu**:
+   - **Keyboard Shortcuts**: Control the timer from anywhere in Chrome without opening the popup:
+     - `Alt+Shift+P` (or `⌥+Shift+P` on Mac): Start or pause timer (respects Strict Mode).
+     - `Alt+Shift+S` (or `⌥+Shift+S` on Mac): Skip current timer phase (respects Strict Mode).
+     - Link to customize keys directly at `chrome://extensions/shortcuts` provided in Options.
+   - **Right-Click Context Menu ("Block this site during focus")**:
+     - Right-click anywhere on any page to add its domain to the distraction blocklist.
+     - Automatic domain normalization (strips protocols, subpaths, and `www.`).
+     - Ignores internal browser pages (`chrome://`, extension pages) with helpful alerts.
+     - Detects and prevents duplicate entries.
+     - Automatically disabled / locked during strict focus sessions.
+   - **Permissions Overview**:
+     - `contextMenus`: Needed to register the "Block this site during focus" item in Chrome's right-click menu.
+     - `declarativeNetRequest`: Dynamic network rules to redirect blocked domains to `blocked.html`.
+     - `alarms`: Reliable timer scheduling that persists across service worker idle periods.
+     - `storage`: Preserves settings, timer state, and session analytics locally.
+     - `notifications`: Desktop transition chimes, site block confirmations, and strict mode alerts.
+
 ---
 
 ## 🚀 How to Install and Run (for Beginners)

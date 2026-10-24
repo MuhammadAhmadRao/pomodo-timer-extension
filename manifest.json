@@ -23,8 +23,25 @@
     "storage",
     "alarms",
     "notifications",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "contextMenus"
   ],
+  "commands": {
+    "toggle-timer": {
+      "suggested_key": {
+        "default": "Alt+Shift+P",
+        "mac": "Alt+Shift+P"
+      },
+      "description": "Start or pause the timer"
+    },
+    "skip-phase": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Alt+Shift+S"
+      },
+      "description": "Skip to the next timer phase"
+    }
+  },
   "host_permissions": [
     "http://*/*",
     "https://*/*"
