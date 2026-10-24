@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Focus Timer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo">
+        <span class="logo-icon">🍅</span>
+        <span class="logo-text">Focus Timer</span>
+      </div>
+      <div class="header-actions">
+        <button id="btn-stats" class="icon-btn" title="View Productivity Stats">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+        </button>
+        <button id="btn-pip" class="icon-btn" title="Pop out Picture-in-Picture (floats above all apps)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+            <rect x="12" y="10" width="8" height="6" rx="1" fill="currentColor" fill-opacity="0.3"></rect>
+          </svg>
+        </button>
+        <button id="btn-theme" class="icon-btn" title="Toggle Theme">
+          <svg id="theme-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+        <button id="btn-settings" class="icon-btn" title="Open Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Phase Selector Segmented Pills -->
+    <nav class="phase-tabs" role="tablist">
+      <button class="tab-btn active" data-phase="focus" role="tab">Focus</button>
+      <button class="tab-btn" data-phase="shortBreak" role="tab">Short Break</button>
+      <button class="tab-btn" data-phase="longBreak" role="tab">Long Break</button>
+    </nav>
+
+    <!-- Task Label Input Section (shown before / while starting focus session) -->
+    <section class="task-section" id="task-section">
+      <div class="task-input-wrapper">
+        <span class="task-input-icon">🏷️</span>
+        <input
+          type="text"
+          id="task-input"
+          class="task-input"
+          placeholder="What are you working on?"
+          maxlength="50"
+          autocomplete="off"
+        />
+        <button type="button" id="btn-clear-task" class="task-clear-btn hidden" title="Clear label">&times;</button>
+      </div>
+      <div class="quick-chips" id="quick-chips" aria-label="Recent task labels">
+        <!-- Quick-pick chips injected here -->
+      </div>
+    </section>
+
+    <!-- Circular Timer Centerpiece -->
+    <main class="timer-centerpiece">
+      <div class="progress-ring-container">
+        <svg class="progress-ring" viewBox="0 0 240 240">
+          <circle class="ring-track" cx="120" cy="120" r="102" />
+          <circle class="ring-fill" id="ring-fill" cx="120" cy="120" r="102" />
+        </svg>
+
+        <div class="timer-inner">
+          <div class="phase-indicator" id="phase-badge">
+            <span class="phase-emoji" id="phase-emoji">🎯</span>
+            <span class="phase-text" id="phase-name">Focus</span>
+          </div>
+          <div class="active-task-pill hidden" id="active-task-display" title=""></div>
+          <div class="timer-display" id="timer-display">25:00</div>
+          <div class="status-indicator" id="status-text">Ready to begin</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Rounds indicator (dots) -->
+    <section class="rounds-container" title="Current 4-round Pomodoro cycle">
+      <div class="rounds-label">Rounds:</div>
+      <div class="round-dots" id="round-dots">
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span class="dot"></span>
+      </div>
+    </section>
+
+    <!-- Action Controls -->
+    <footer class="controls-row">
+      <button id="btn-reset" class="ctrl-btn secondary" title="Reset Current Phase">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 2v6h6"></path>
+          <path d="M3 13a9 9 0 1 0 3-7.7L3 8"></path>
+        </svg>
+      </button>
+
+      <button id="btn-toggle" class="ctrl-btn primary" title="Start / Pause">
+        <svg id="icon-play" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        <svg id="icon-pause" class="hidden" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="4" width="4" height="16"></rect>
+          <rect x="14" y="4" width="4" height="16"></rect>
+        </svg>
+      </button>
+
+      <button id="btn-skip" class="ctrl-btn secondary" title="Skip to Next Phase">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 4 15 12 5 20 5 4"></polygon>
+          <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"></line>
+        </svg>
+      </button>
+    </footer>
+
+    <!-- Hidden elements for Picture-in-Picture video stream -->
+    <canvas id="pip-canvas" width="300" height="300" style="display:none;"></canvas>
+    <video id="pip-video" autoplay muted style="display:none;"></video>
+  </div>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../shared/sound.js"></script>
+  <script src="../shared/stats.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

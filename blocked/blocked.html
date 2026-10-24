@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stay Focused - Focus Timer</title>
+  <link rel="stylesheet" href="blocked.css">
+</head>
+<body>
+  <div class="blob-bg"></div>
+  <div class="card">
+    <div class="icon-ring">
+      <span class="shield-icon">🛡️</span>
+    </div>
+    
+    <div class="badge">FOCUS SESSION ACTIVE</div>
+    
+    <h1 class="title">This site is paused</h1>
+    <p class="subtitle" id="quote-text">"Deep work produces world-class results. Stay locked in."</p>
+
+    <div class="timer-card">
+      <div class="timer-label">Focus time remaining</div>
+      <div class="time-display" id="time-display">25:00</div>
+      <div class="cycle-pill" id="cycle-pill">
+        <span class="dot"></span>
+        <span id="cycle-text">Round 1 of 4</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-close-tab">Close This Tab</button>
+      <button class="btn btn-secondary" id="btn-open-options">Settings & Whitelist</button>
+    </div>
+
+    <div class="footer-hint">
+      Sites will unblock automatically when your break begins.
+    </div>
+  </div>
+
+  <script src="../shared/storage.js"></script>
+  <script src="blocked.js"></script>
+</body>
+</html>

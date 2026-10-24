@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Focus Timer - Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="settings-wrapper">
+    <!-- Header -->
+    <header class="settings-header">
+      <div class="header-branding">
+        <span class="header-logo">🍅</span>
+        <div>
+          <h1 class="header-title">Focus Timer Settings</h1>
+          <p class="header-subtitle">Customize timer durations, distractions, and preferences</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <a href="../stats/stats.html" class="btn btn-secondary header-stats-link" id="link-stats" title="View Statistics & History">
+          📊 View Stats
+        </a>
+        <div id="save-toast" class="save-toast">Preferences saved</div>
+      </div>
+    </header>
+
+    <main class="settings-grid">
+      <!-- Section 1: Timer Durations -->
+      <section class="card">
+        <div class="card-header">
+          <div class="card-icon">⏱️</div>
+          <div>
+            <h2 class="card-title">Timer Intervals & Goals</h2>
+            <p class="card-desc">Set your preferred duration for each phase and your daily focus target</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="input-row">
+            <div class="input-field">
+              <label for="focus-duration">Focus Duration</label>
+              <div class="input-suffix">
+                <input type="number" id="focus-duration" min="1" max="180" value="25">
+                <span>min</span>
+              </div>
+            </div>
+            <div class="input-field">
+              <label for="short-break">Short Break</label>
+              <div class="input-suffix">
+                <input type="number" id="short-break" min="1" max="60" value="5">
+                <span>min</span>
+              </div>
+            </div>
+            <div class="input-field">
+              <label for="long-break">Long Break</label>
+              <div class="input-suffix">
+                <input type="number" id="long-break" min="1" max="90" value="15">
+                <span>min</span>
+              </div>
+            </div>
+            <div class="input-field">
+              <label for="rounds-target">Rounds Before Long Break</label>
+              <div class="input-suffix">
+                <input type="number" id="rounds-target" min="1" max="12" value="4">
+                <span>rounds</span>
+              </div>
+            </div>
+            <div class="input-field">
+              <label for="daily-goal">Daily Goal</label>
+              <div class="input-suffix">
+                <input type="number" id="daily-goal" min="1" max="720" value="120">
+                <span>min</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2: Website Blocker -->
+      <section class="card">
+        <div class="card-header">
+          <div class="card-icon">🛡️</div>
+          <div>
+            <h2 class="card-title">Distraction Blocker</h2>
+            <p class="card-desc">These sites will redirect to the "Stay Focused" page during focus sessions.</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <form id="add-site-form" class="site-input-group">
+            <input type="text" id="site-input" placeholder="e.g. reddit.com or twitter.com" autocomplete="off">
+            <button type="submit" class="btn btn-primary" id="btn-add-site">Block Site</button>
+          </form>
+
+          <div class="presets-row">
+            <span class="preset-label">Quick Add:</span>
+            <button type="button" class="preset-chip" data-preset="social">+ Social Media</button>
+            <button type="button" class="preset-chip" data-preset="video">+ Video & Streaming</button>
+            <button type="button" class="preset-chip" data-preset="news">+ News & Forums</button>
+          </div>
+
+          <div class="blocked-sites-list" id="blocked-sites-container">
+            <!-- Dynamically populated tags -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 3: Preferences & Widgets -->
+      <section class="card">
+        <div class="card-header">
+          <div class="card-icon">⚙️</div>
+          <div>
+            <h2 class="card-title">Preferences</h2>
+            <p class="card-desc">Notifications, floating timer widget, and audio cues</p>
+          </div>
+        </div>
+        <div class="card-body toggle-list">
+          <div class="toggle-item">
+            <div class="toggle-info">
+              <span class="toggle-title">Docked Top Notch Pill</span>
+              <span class="toggle-desc">Show compact timer capsule flush with the top of web pages</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-top-pill" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="toggle-item">
+            <div class="toggle-info">
+              <span class="toggle-title">Tab Title Timer</span>
+              <span class="toggle-desc">Prefix browser tab title with live countdown (⏱ MM:SS)</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-tab-title" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="toggle-item">
+            <div class="toggle-info">
+              <span class="toggle-title">Desktop Notifications</span>
+              <span class="toggle-desc">Alert when a focus round or break period ends</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-notifications" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="toggle-item">
+            <div class="toggle-info">
+              <span class="toggle-title">Audio Chimes</span>
+              <span class="toggle-desc">Play soft melodic chime on session transitions</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-sound" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="toggle-item">
+            <div class="toggle-info">
+              <span class="toggle-title">Appearance Theme</span>
+              <span class="toggle-desc">Choose between Dark, Light, or follow System</span>
+            </div>
+            <select id="select-theme" class="select-dropdown">
+              <option value="dark">Dark Theme</option>
+              <option value="light">Light Theme</option>
+              <option value="system">Match System</option>
+            </select>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Actions -->
+    <footer class="settings-footer">
+      <button class="btn btn-danger" id="btn-reset-defaults">Reset to Defaults</button>
+      <button class="btn btn-primary btn-large" id="btn-save">Save Changes</button>
+    </footer>
+  </div>
+
+  <script src="../shared/storage.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

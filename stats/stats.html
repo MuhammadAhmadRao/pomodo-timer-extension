@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Focus Timer - Statistics & Analytics</title>
+  <link rel="stylesheet" href="stats.css">
+</head>
+<body>
+  <div class="stats-wrapper">
+    <!-- Header -->
+    <header class="stats-header">
+      <div class="header-branding">
+        <span class="header-logo">🍅</span>
+        <div>
+          <h1 class="header-title">Productivity & Stats</h1>
+          <p class="header-subtitle">Track your focus sessions, goals, streaks, and label trends</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button type="button" id="btn-theme" class="btn btn-secondary icon-btn-text" title="Toggle Theme">
+          <span id="theme-icon">🌙</span>
+          <span id="theme-text">Theme</span>
+        </button>
+        <button type="button" id="btn-export-csv" class="btn btn-secondary" title="Download your session log as CSV">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          Export CSV
+        </button>
+        <button type="button" id="btn-clear-stats" class="btn btn-danger" title="Clear all recorded session logs">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          Clear Stats
+        </button>
+      </div>
+    </header>
+
+    <!-- Empty State (Shown when no sessions recorded) -->
+    <section id="empty-state" class="empty-state hidden">
+      <div class="empty-illustration">🎯</div>
+      <h2 class="empty-title">No Focus Sessions Yet</h2>
+      <p class="empty-desc">
+        Start a focus session from the extension popup to begin logging your deep work, tracking daily goals, and building productivity streaks!
+      </p>
+      <div class="empty-actions">
+        <a href="../options/options.html" class="btn btn-primary">Customize Settings & Goals</a>
+      </div>
+    </section>
+
+    <!-- Main Analytics Content (Shown when sessions exist) -->
+    <main id="stats-content" class="stats-grid">
+      <!-- Section 1: Today & Streaks KPI Cards -->
+      <section class="kpi-row">
+        <!-- Card 1: Today's Focus & Daily Goal -->
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">TODAY'S FOCUS</span>
+            <span class="kpi-badge" id="kpi-today-goal-badge">Goal: 120m</span>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-main-val">
+              <span class="kpi-number" id="today-focused-val">0</span>
+              <span class="kpi-unit">min</span>
+            </div>
+            <div class="goal-progress-container">
+              <div class="goal-progress-bar-bg">
+                <div class="goal-progress-bar-fill" id="today-progress-fill" style="width: 0%;"></div>
+              </div>
+              <div class="goal-progress-labels">
+                <span id="today-progress-text">0 / 120 min</span>
+                <span id="today-progress-percent">0%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Today's Completed Sessions -->
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">COMPLETED ROUNDS</span>
+            <span class="kpi-icon">🎯</span>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-main-val">
+              <span class="kpi-number" id="today-sessions-val">0</span>
+              <span class="kpi-unit">sessions</span>
+            </div>
+            <p class="kpi-subtext" id="today-sessions-subtext">Completed full focus cycles today</p>
+          </div>
+        </div>
+
+        <!-- Card 3: Streaks -->
+        <div class="card kpi-card streak-card">
+          <div class="kpi-header">
+            <span class="kpi-title">DAILY STREAK</span>
+            <span class="streak-fire">🔥</span>
+          </div>
+          <div class="streak-split">
+            <div class="streak-item">
+              <span class="streak-number" id="current-streak-val">0</span>
+              <span class="streak-label">Current Days</span>
+            </div>
+            <div class="streak-divider"></div>
+            <div class="streak-item">
+              <span class="streak-number trophy" id="longest-streak-val">0</span>
+              <span class="streak-label">Best Streak 🏆</span>
+            </div>
+          </div>
+          <p class="streak-note" id="streak-note">1 completed session keeps your streak alive.</p>
+        </div>
+      </section>
+
+      <!-- Section 2: Last 7 Days SVG Bar Chart -->
+      <section class="card chart-card">
+        <div class="card-header-row">
+          <div>
+            <h2 class="section-title">Last 7 Days Focus Time</h2>
+            <p class="section-desc">Daily focused minutes compared against your target</p>
+          </div>
+          <div class="chart-legend">
+            <span class="legend-item"><span class="legend-dot goal-dot"></span> Daily Goal</span>
+            <span class="legend-item"><span class="legend-dot today-dot"></span> Today</span>
+          </div>
+        </div>
+
+        <div class="chart-container" id="chart-container">
+          <!-- Plain SVG Bar Chart -->
+          <svg id="bar-chart-svg" class="bar-chart-svg" viewBox="0 0 700 240" preserveAspectRatio="none">
+            <!-- Rendered dynamically by stats.js -->
+          </svg>
+        </div>
+      </section>
+
+      <!-- Section 3: 30-Day Summary & Heatmap Grid -->
+      <section class="card summary-card">
+        <div class="card-header-row">
+          <div>
+            <h2 class="section-title">Last 30 Days Summary</h2>
+            <p class="section-desc">Overall momentum and consistency over the past month</p>
+          </div>
+        </div>
+
+        <div class="summary-metrics-grid">
+          <div class="summary-metric">
+            <span class="summary-metric-val" id="summary-30-total">0h</span>
+            <span class="summary-metric-label">Total Focused</span>
+          </div>
+          <div class="summary-metric">
+            <span class="summary-metric-val" id="summary-30-completed">0</span>
+            <span class="summary-metric-label">Sessions Completed</span>
+          </div>
+          <div class="summary-metric">
+            <span class="summary-metric-val" id="summary-30-avg">0m</span>
+            <span class="summary-metric-label">Daily Average</span>
+          </div>
+          <div class="summary-metric">
+            <span class="summary-metric-val" id="summary-30-active">0 / 30</span>
+            <span class="summary-metric-label">Active Days</span>
+          </div>
+        </div>
+
+        <div class="activity-dots-section">
+          <span class="activity-dots-title">Past 30 Days Activity:</span>
+          <div class="activity-dots-row" id="activity-dots-row">
+            <!-- 30 micro indicators injected here -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 4: Top Labels Breakdown -->
+      <section class="card labels-card">
+        <div class="card-header-row">
+          <div>
+            <h2 class="section-title">Top Tasks & Labels</h2>
+            <p class="section-desc">Total focused time invested per task or category</p>
+          </div>
+        </div>
+
+        <div class="labels-list" id="labels-list">
+          <!-- Dynamically populated label rows -->
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="stats-footer">
+      <a href="../popup/popup.html" class="footer-link">Back to Timer Popup</a>
+      <span class="footer-sep">•</span>
+      <a href="../options/options.html" class="footer-link">Extension Settings</a>
+    </footer>
+  </div>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../shared/stats.js"></script>
+  <script src="stats.js"></script>
+</body>
+</html>
