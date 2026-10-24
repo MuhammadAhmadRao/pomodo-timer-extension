@@ -26,6 +26,12 @@ Using Node.js test runner (`node --test test/*.test.js`) and headless Chromium (
   - Daily goal progress calculation and 7-day breakdown.
   - Top labels grouping, descending duration sorting, and percentage share.
   - CSV generation with proper header formatting and quote escaping.
+- [x] **Strict Mode Enforcement & Emergency Exit (`test/strict-mode.test.js` - 4 unit tests)**:
+  - Background Service Worker rejects `PAUSE`, `RESET`, `SKIP`, `SWITCH_PHASE`, and `ALLOW_5_MINUTES` during strict focus.
+  - Break phases permit normal timer controls and actions even when Strict Mode is enabled.
+  - Emergency Exit terminates session, logs incomplete session with actual focused time if $\ge 1$ minute, and resets timer to idle.
+  - Emergency Exit ignores brief sessions under 1 minute.
+  - Temporary unblock (`ALLOW_5_MINUTES`) sets `tempUnblockUntil` and dynamic rules clear when phase ends.
 
 ---
 
@@ -112,14 +118,44 @@ Follow these steps in Google Chrome to visually verify the task label feature an
 
 ---
 
+### E. Verify Strict Mode & Distraction Resistance
+1. **Enable Strict Mode in Options**:
+   - Open the Options page (`options/options.html`).
+   - In Section 3 (Preferences), turn ON the **Strict Mode 🔒** toggle.
+   - Click **Save Changes** and see the toast confirmation.
+2. **Strict Focus UI & Background Locks**:
+   - Open the popup and start a **Focus** session (▶).
+   - **In Popup**: Pause, Reset, Skip, and Phase tabs become disabled (`opacity: 0.5`, `cursor: not-allowed`). A yellow `🔒 STRICT MODE` badge appears below the timer.
+   - **In Docked Notch Pill**: On web pages, hovering over the notch pill reveals disabled action buttons (`opacity: 0.35`, `cursor: not-allowed`), and the tooltip displays `🔒 Strict Focus: [Task]`.
+   - **In PiP Window**: The pop-out window renders `🔒 STRICT MODE`.
+   - **In Service Worker**: Open DevTools console on any page and execute:
+     `chrome.runtime.sendMessage({ action: "PAUSE" }, console.log)`
+     Verify it responds: `{ success: false, error: "Strict mode is active. Pausing is disabled during focus." }`.
+   - **In Options Page**: A prominent amber lock banner appears at the top. Timer durations, site blocker input, presets, tag remove buttons, and the Strict Mode toggle itself are disabled and read-only.
+3. **Break Phases Behave Normally**:
+   - When focus transitions to Short Break or Long Break, all controls, pause/reset/skip, and options unlock automatically.
+4. **Emergency Exit Escape Hatch**:
+   - While a strict focus phase is running, click **"⚠️ End session early..."** at the bottom of the popup.
+   - An emergency modal opens with a 30-second live countdown (`30s`, `29s`, ...).
+   - Confirm button remains disabled until the 30-second cooldown reaches zero AND the exact confirmation phrase `"I choose to stop focusing"` is typed into the input.
+   - Clicking Confirm ends the session, resets the timer to idle focus, and logs the session as incomplete (`completed: false`) in the session history if focused time was $\ge 1$ minute.
+5. **"Allow 5 Minutes" on `blocked.html`**:
+   - **With Strict Mode OFF**: Try visiting a blocked website (e.g. `reddit.com`). Click the **"⏱️ Allow 5 Minutes"** button. A modal opens with a 20-second visible countdown. Once the 20 seconds elapse, confirm becomes active and unblocks sites for 5 minutes.
+   - **With Strict Mode ON**: Try visiting a blocked website. Verify the **"Allow 5 Minutes"** button is completely hidden from the page.
+
+---
+
 ## 3. What Could NOT Be Automatically Verified
 
-While automated Node.js unit tests and headless Chrome verified data math, state transitions, storage persistence, and manifest parsing, the following require real human visual inspection:
+While automated Node.js unit tests and headless Chrome verified data math, state transitions, storage persistence, and message rejection, the following require real human visual inspection and physical environment checks:
 
-1. **Native OS File Download Dialog**:
-   - The browser's native file-system download prompt for the CSV export cannot be visually validated in headless mode without a physical desktop session.
-2. **Native OS Modal Dialog Confirmations**:
-   - Visual inspection of the browser's native `confirm()` modal popup when clicking "Clear Stats".
-3. **Visual Aesthetics & High-DPI Font Rendering**:
-   - The exact visual feel of the SVG bar chart gradients, font rendering, and glassmorphic card blurs in different desktop color profiles and zoom levels.
+1. **OS-Level System Sleep and Wake Transitions**:
+   - We verified mathematically that timer calculations use absolute timestamps (`endTime = Date.now() + duration`), ensuring elapsed time survives background suspension. However, actual OS power-state transitions (putting Mac/PC to sleep mid-focus for 10 minutes and waking it) require physical testing.
+2. **Physical Browser / OS Restart Mid-Focus**:
+   - Verifying that closing the Chrome browser application completely during a strict focus session and relaunching it preserves the locked state requires an interactive browser session.
+3. **Native Extension Uninstall / Disable Bypass**:
+   - Chrome does not permit extensions to restrict or disable access to `chrome://extensions`. Consequently, users can technically bypass Strict Mode by disabling the extension in Chrome settings.
+4. **Native Audio Chime Output**:
+   - The Web Audio API synthesizer node connections are tested, but actual acoustic perception through speakers requires human verification.
+
 

@@ -460,6 +460,191 @@ body {
   transform: scale(0.95);
 }
 
+/* Strict Mode Badge */
+.strict-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+/* Emergency Exit Escape Hatch */
+.emergency-exit-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-top: -4px;
+}
+
+.emergency-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.2s ease;
+}
+
+.emergency-link:hover {
+  color: #ef4444;
+}
+
+/* Emergency Friction Modal */
+.emergency-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(13, 17, 23, 0.88);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+[data-theme="light"] .emergency-modal {
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.emergency-modal-content {
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 18px 16px;
+  width: 100%;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: modalPop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalPop {
+  from { transform: scale(0.92); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.emergency-modal-content h3 {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f87171;
+  margin: 0;
+}
+
+.emergency-info {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  user-select: text;
+}
+
+.cooldown-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-color);
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.cooldown-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.cooldown-timer {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fbbf24;
+  font-variant-numeric: tabular-nums;
+}
+
+.emergency-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.emergency-field label {
+  font-size: 11px;
+  color: var(--text-muted);
+  user-select: text;
+}
+
+.emergency-field label strong {
+  color: var(--text-main);
+  display: block;
+  margin-top: 3px;
+  font-family: monospace;
+  background: var(--surface-color);
+  padding: 4px 6px;
+  border-radius: 4px;
+  user-select: all;
+}
+
+.emergency-input {
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  user-select: text;
+}
+
+.emergency-input:focus {
+  outline: none;
+  border-color: #ef4444;
+}
+
+.emergency-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.emergency-actions .btn {
+  flex: 1;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.emergency-actions .btn-secondary {
+  background: var(--surface-color);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+}
+
+.emergency-actions .btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.emergency-actions .btn-danger:disabled {
+  background: rgba(239, 68, 68, 0.25);
+  color: rgba(255, 255, 255, 0.35);
+  cursor: not-allowed;
+}
+
 .hidden {
   display: none !important;
 }

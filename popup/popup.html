@@ -84,6 +84,7 @@
           <div class="active-task-pill hidden" id="active-task-display" title=""></div>
           <div class="timer-display" id="timer-display">25:00</div>
           <div class="status-indicator" id="status-text">Ready to begin</div>
+          <div class="strict-badge hidden" id="strict-badge">🔒 Strict Mode</div>
         </div>
       </div>
     </main>
@@ -125,6 +126,36 @@
         </svg>
       </button>
     </footer>
+
+    <!-- Strict Mode Emergency Exit Trigger -->
+    <div id="emergency-exit-wrapper" class="emergency-exit-wrapper hidden">
+      <button type="button" id="btn-emergency-exit" class="emergency-link">
+        ⚠️ End session early...
+      </button>
+    </div>
+
+    <!-- Emergency Exit Friction Modal -->
+    <div id="emergency-modal" class="emergency-modal hidden" role="dialog" aria-modal="true" aria-labelledby="emergency-title">
+      <div class="emergency-modal-content">
+        <h3 id="emergency-title">⚠️ End Session Early?</h3>
+        <p class="emergency-info">Strict mode protects your focus. To terminate early, wait through the cooldown and confirm.</p>
+        
+        <div class="cooldown-box">
+          <span class="cooldown-label">Cooldown required:</span>
+          <span class="cooldown-timer" id="cooldown-seconds">30s</span>
+        </div>
+
+        <div class="emergency-field">
+          <label for="emergency-input">Type exact sentence: <strong>I choose to stop focusing</strong></label>
+          <input type="text" id="emergency-input" class="emergency-input" placeholder="Type confirmation here..." autocomplete="off">
+        </div>
+
+        <div class="emergency-actions">
+          <button type="button" id="btn-emergency-cancel" class="btn btn-secondary">Stay Focused</button>
+          <button type="button" id="btn-emergency-confirm" class="btn btn-danger" disabled>End Session</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Hidden elements for Picture-in-Picture video stream -->
     <canvas id="pip-canvas" width="300" height="300" style="display:none;"></canvas>

@@ -25,6 +25,15 @@
       </div>
     </header>
 
+    <!-- Strict Mode Active Lock Banner -->
+    <div id="strict-mode-banner" class="strict-mode-banner" style="display: none;">
+      <span class="strict-mode-banner-icon">🔒</span>
+      <div class="strict-mode-banner-text">
+        <strong>Strict Mode is active during an ongoing focus phase.</strong><br>
+        Timer durations, the distraction blocklist, and the Strict Mode toggle are read-only until the current focus phase ends.
+      </div>
+    </div>
+
     <main class="settings-grid">
       <!-- Section 1: Timer Durations -->
       <section class="card">
@@ -114,6 +123,17 @@
           </div>
         </div>
         <div class="card-body toggle-list">
+          <div class="toggle-item">
+            <div class="toggle-info">
+              <span class="toggle-title">Strict Mode 🔒</span>
+              <span class="toggle-desc">Lock controls during focus sessions: pause, reset, skip, and blocklist edits are disabled</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-strict-mode">
+              <span class="slider"></span>
+            </label>
+          </div>
+
           <div class="toggle-item">
             <div class="toggle-info">
               <span class="toggle-title">Docked Top Notch Pill</span>

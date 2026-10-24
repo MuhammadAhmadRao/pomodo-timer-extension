@@ -8,9 +8,19 @@
   const btnCloseTab = document.getElementById("btn-close-tab");
   const btnOpenOptions = document.getElementById("btn-open-options");
 
+  // Allow 5 Minutes Elements
+  const unblockActionWrapper = document.getElementById("unblock-action-wrapper");
+  const btnAllow5min = document.getElementById("btn-allow-5min");
+  const allowModal = document.getElementById("allow-modal");
+  const allowCountdown = document.getElementById("allow-countdown");
+  const btnAllowCancel = document.getElementById("btn-allow-cancel");
+  const btnAllowConfirm = document.getElementById("btn-allow-confirm");
+
   let timerState = null;
   let settings = null;
   let intervalId = null;
+  let allowCooldownInterval = null;
+  let allowCooldownRemaining = 20;
 
   // Curated motivational quotes
   const QUOTES = [
@@ -61,6 +71,15 @@
     const remainingMs = FocusTimerStorage.computeRemaining(timerState);
     timeDisplay.textContent = FocusTimerStorage.formatTime(remainingMs);
 
+    // In Strict Mode: Hide Allow 5 Minutes button completely
+    const isStrict = Boolean(settings && settings.strictModeEnabled);
+    if (unblockActionWrapper) {
+      unblockActionWrapper.style.display = isStrict ? "none" : "block";
+    }
+    if (isStrict && allowModal) {
+      closeAllowModal();
+    }
+
     // If session ended or phase switched to break, redirect back or unblock
     if (timerState.phase !== "focus" || !timerState.isRunning) {
       timeDisplay.textContent = "Break Time!";
@@ -75,6 +94,59 @@
   function startLiveTicker() {
     if (intervalId) clearInterval(intervalId);
     intervalId = setInterval(updateDisplay, 1000);
+  }
+
+  function openAllowModal() {
+    if (!allowModal) return;
+    allowModal.classList.remove("hidden");
+    allowCooldownRemaining = 20;
+    if (allowCountdown) allowCountdown.textContent = "20s";
+    if (btnAllowConfirm) btnAllowConfirm.disabled = true;
+
+    if (allowCooldownInterval) clearInterval(allowCooldownInterval);
+    allowCooldownInterval = setInterval(() => {
+      allowCooldownRemaining = Math.max(0, allowCooldownRemaining - 1);
+      if (allowCooldownRemaining > 0) {
+        if (allowCountdown) allowCountdown.textContent = `${allowCooldownRemaining}s`;
+      } else {
+        if (allowCountdown) allowCountdown.textContent = "Ready";
+        if (btnAllowConfirm) btnAllowConfirm.disabled = false;
+        clearInterval(allowCooldownInterval);
+        allowCooldownInterval = null;
+      }
+    }, 1000);
+  }
+
+  function closeAllowModal() {
+    if (!allowModal) return;
+    allowModal.classList.add("hidden");
+    if (allowCooldownInterval) {
+      clearInterval(allowCooldownInterval);
+      allowCooldownInterval = null;
+    }
+  }
+
+  if (btnAllow5min) {
+    btnAllow5min.addEventListener("click", openAllowModal);
+  }
+  if (btnAllowCancel) {
+    btnAllowCancel.addEventListener("click", closeAllowModal);
+  }
+  if (btnAllowConfirm) {
+    btnAllowConfirm.addEventListener("click", () => {
+      if (allowCooldownRemaining > 0) return;
+      closeAllowModal();
+
+      chrome.runtime.sendMessage({ action: "ALLOW_5_MINUTES" }, (res) => {
+        if (res && res.success) {
+          if (document.referrer && !document.referrer.includes(chrome.runtime.id)) {
+            window.location.href = document.referrer;
+          } else {
+            window.history.back();
+          }
+        }
+      });
+    });
   }
 
   // Handle storage updates in real-time

@@ -244,6 +244,13 @@
     btnToggleEl.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      const isStrictFocus = Boolean(
+        settings.strictModeEnabled &&
+        timerState.isRunning &&
+        (timerState.phase || "focus") === "focus"
+      );
+      if (isStrictFocus) return;
+
       const action = timerState.isRunning ? "PAUSE" : "START";
       chrome.runtime.sendMessage({ action }, (res) => {
         if (res && res.timerState) {
@@ -256,6 +263,13 @@
     btnSkipEl.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      const isStrictFocus = Boolean(
+        settings.strictModeEnabled &&
+        timerState.isRunning &&
+        (timerState.phase || "focus") === "focus"
+      );
+      if (isStrictFocus) return;
+
       chrome.runtime.sendMessage({ action: "SKIP" }, (res) => {
         if (res && res.timerState) {
           timerState = res.timerState;
@@ -358,14 +372,47 @@
       iconPauseEl.style.display = "none";
     }
 
-    // Update docked pill tooltip with truncated task label
-    const rawLabel = (timerState.label || "").trim();
-    if (isFocus && rawLabel) {
-      const maxChars = 28;
-      const truncatedLabel = rawLabel.length > maxChars ? rawLabel.slice(0, maxChars - 1) + "…" : rawLabel;
-      pillEl.title = `Focus: ${truncatedLabel}`;
+    // Update docked pill state under strict mode
+    const isStrictFocus = Boolean(
+      settings.strictModeEnabled &&
+      timerState.isRunning &&
+      isFocus
+    );
+
+    if (isStrictFocus) {
+      btnToggleEl.disabled = true;
+      btnToggleEl.style.opacity = "0.35";
+      btnToggleEl.style.cursor = "not-allowed";
+      btnToggleEl.title = "Strict mode: pause disabled";
+
+      btnSkipEl.disabled = true;
+      btnSkipEl.style.opacity = "0.35";
+      btnSkipEl.style.cursor = "not-allowed";
+      btnSkipEl.title = "Strict mode: skip disabled";
+
+      const rawLabel = (timerState.label || "").trim();
+      const truncatedLabel = rawLabel.length > 25 ? rawLabel.slice(0, 24) + "…" : rawLabel;
+      pillEl.title = `🔒 Strict Focus${truncatedLabel ? ": " + truncatedLabel : ""}`;
     } else {
-      pillEl.title = isFocus ? "Focus Timer" : "Break Time";
+      btnToggleEl.disabled = false;
+      btnToggleEl.style.opacity = "1";
+      btnToggleEl.style.cursor = "pointer";
+      btnToggleEl.title = timerState.isRunning ? "Pause" : "Resume";
+
+      btnSkipEl.disabled = false;
+      btnSkipEl.style.opacity = "1";
+      btnSkipEl.style.cursor = "pointer";
+      btnSkipEl.title = "Skip Phase";
+
+      // Update docked pill tooltip with truncated task label
+      const rawLabel = (timerState.label || "").trim();
+      if (isFocus && rawLabel) {
+        const maxChars = 28;
+        const truncatedLabel = rawLabel.length > maxChars ? rawLabel.slice(0, maxChars - 1) + "…" : rawLabel;
+        pillEl.title = `Focus: ${truncatedLabel}`;
+      } else {
+        pillEl.title = isFocus ? "Focus Timer" : "Break Time";
+      }
     }
 
     // Update tab title

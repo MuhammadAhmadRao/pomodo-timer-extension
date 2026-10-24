@@ -32,8 +32,35 @@
       <button class="btn btn-secondary" id="btn-open-options">Settings & Whitelist</button>
     </div>
 
+    <!-- Allow 5 Minutes Temporary Pass (Hidden in Strict Mode) -->
+    <div class="unblock-action-wrapper" id="unblock-action-wrapper" style="display: none;">
+      <button type="button" class="btn btn-ghost" id="btn-allow-5min">
+        ⏱️ Allow 5 Minutes
+      </button>
+    </div>
+
     <div class="footer-hint">
       Sites will unblock automatically when your break begins.
+    </div>
+  </div>
+
+  <!-- 20-Second Friction Cooldown Modal -->
+  <div id="allow-modal" class="friction-modal hidden" role="dialog" aria-modal="true" aria-labelledby="friction-title">
+    <div class="friction-modal-card">
+      <h3 id="friction-title">⏱️ Temporary 5-Minute Pass</h3>
+      <p class="friction-modal-desc">
+        Take a moment to reflect before stepping away from your focus session. Wait through the cooldown to proceed.
+      </p>
+      
+      <div class="friction-cooldown-box">
+        <span class="friction-cooldown-label">Cooldown required:</span>
+        <span class="friction-timer" id="allow-countdown">20s</span>
+      </div>
+
+      <div class="friction-actions">
+        <button type="button" class="btn btn-secondary" id="btn-allow-cancel">Stay Focused</button>
+        <button type="button" class="btn btn-primary" id="btn-allow-confirm" disabled>Allow 5 Minutes</button>
+      </div>
     </div>
   </div>
 

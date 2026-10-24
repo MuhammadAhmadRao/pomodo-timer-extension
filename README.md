@@ -47,6 +47,14 @@ A clean, modern, zero-dependency Chrome extension (Manifest V3) combining a cust
    - Top tasks/labels breakdown ranked by total focus time and percentage share.
    - CSV export and one-click stats reset with confirmation.
 
+8. **Strict Mode & Distraction Resistance**:
+   - **Enforced at Service Worker Level**: When Strict Mode is enabled and a focus phase is active, `PAUSE`, `RESET`, `SKIP`, and phase changes are rejected by the background service worker, not merely hidden in the UI.
+   - **UI Lock**: Control buttons in the popup, docked notch pill, and PiP stream are disabled with lock indicators.
+   - **Settings Protection**: In the Options page, timer durations, the blocked sites list, and the Strict Mode toggle are made read-only with a persistent banner until the focus phase completes.
+   - **Emergency Exit**: Includes a friction-gated escape hatch requiring a 30-second cooldown wait and typing the exact confirmation phrase `"I choose to stop focusing"`. Partial focus time ($\ge 1$ min) is logged for analytics.
+   - **Blocked Page Friction**: "Allow 5 Minutes" temporary unblock button requires a 20-second cooldown wait, and is completely hidden when Strict Mode is enabled.
+   - **Honest Limitation**: Chrome does not allow browser extensions to prevent users from disabling or uninstalling them. While Strict Mode locks all extension controls, web pages, and background messages, it can still be bypassed by navigating to `chrome://extensions` and toggling the extension off.
+
 ---
 
 ## 🚀 How to Install and Run (for Beginners)

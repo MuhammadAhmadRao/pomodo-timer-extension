@@ -21,6 +21,16 @@
   const btnPip = document.getElementById("btn-pip");
   const btnStats = document.getElementById("btn-stats");
 
+  // Strict Mode References
+  const strictBadge = document.getElementById("strict-badge");
+  const emergencyExitWrapper = document.getElementById("emergency-exit-wrapper");
+  const btnEmergencyExit = document.getElementById("btn-emergency-exit");
+  const emergencyModal = document.getElementById("emergency-modal");
+  const cooldownSecondsSpan = document.getElementById("cooldown-seconds");
+  const emergencyInput = document.getElementById("emergency-input");
+  const btnEmergencyCancel = document.getElementById("btn-emergency-cancel");
+  const btnEmergencyConfirm = document.getElementById("btn-emergency-confirm");
+
   // Task Label References
   const taskSection = document.getElementById("task-section");
   const taskInput = document.getElementById("task-input");
@@ -38,6 +48,9 @@
   let timerState = FocusTimerStorage.DEFAULT_TIMER_STATE;
   let recentLabels = [];
   let tickerTimer = null;
+  let emergencyCooldownInterval = null;
+  let emergencyCooldownRemaining = 30;
+  const EMERGENCY_CONFIRMATION_TEXT = "I choose to stop focusing";
   const CIRCUMFERENCE = 2 * Math.PI * 102; // 640.88
 
   // Initialize
@@ -109,6 +122,62 @@
 
     // Render task label input, quick chips, and centerpiece task badge
     renderTaskSection();
+
+    // Strict Mode visual badge and control lock
+    const isStrictFocus = Boolean(
+      settings.strictModeEnabled &&
+      timerState.isRunning &&
+      currentPhase === "focus"
+    );
+
+    if (strictBadge) {
+      strictBadge.classList.toggle("hidden", !isStrictFocus);
+    }
+    if (emergencyExitWrapper) {
+      emergencyExitWrapper.classList.toggle("hidden", !isStrictFocus);
+    }
+
+    if (isStrictFocus) {
+      btnToggle.disabled = true;
+      btnToggle.style.opacity = "0.5";
+      btnToggle.style.cursor = "not-allowed";
+      btnToggle.title = "Strict Mode active: pause disabled";
+
+      btnReset.disabled = true;
+      btnReset.style.opacity = "0.35";
+      btnReset.style.cursor = "not-allowed";
+      btnReset.title = "Strict Mode active: reset disabled";
+
+      btnSkip.disabled = true;
+      btnSkip.style.opacity = "0.35";
+      btnSkip.style.cursor = "not-allowed";
+      btnSkip.title = "Strict Mode active: skip disabled";
+
+      tabButtons.forEach((btn) => {
+        btn.disabled = true;
+        btn.style.cursor = "not-allowed";
+      });
+    } else {
+      btnToggle.disabled = false;
+      btnToggle.style.opacity = "1";
+      btnToggle.style.cursor = "pointer";
+      btnToggle.title = timerState.isRunning ? "Pause" : "Start";
+
+      btnReset.disabled = false;
+      btnReset.style.opacity = "1";
+      btnReset.style.cursor = "pointer";
+      btnReset.title = "Reset Current Phase";
+
+      btnSkip.disabled = false;
+      btnSkip.style.opacity = "1";
+      btnSkip.style.cursor = "pointer";
+      btnSkip.title = "Skip to Next Phase";
+
+      tabButtons.forEach((btn) => {
+        btn.disabled = false;
+        btn.style.cursor = "pointer";
+      });
+    }
 
     // Update PiP canvas if running or visible
     drawPipCanvas();
@@ -348,6 +417,18 @@
         : timerState.label;
       pipCtx.fillText(`🏷️ ${labelText}`, cx, cy + 66);
     }
+
+    // Strict Mode indicator on PiP
+    const isStrictFocus = Boolean(
+      settings.strictModeEnabled &&
+      timerState.isRunning &&
+      currentPhase === "focus"
+    );
+    if (isStrictFocus) {
+      pipCtx.fillStyle = "#fbbf24";
+      pipCtx.font = "bold 11px -apple-system, sans-serif";
+      pipCtx.fillText("🔒 STRICT MODE", cx, cy - 54);
+    }
   }
 
   /**
@@ -379,8 +460,83 @@
     }
   }
 
+  /**
+   * Emergency Exit Friction Modal Handlers
+   */
+  function openEmergencyModal() {
+    if (!emergencyModal) return;
+    emergencyModal.classList.remove("hidden");
+    emergencyCooldownRemaining = 30;
+    if (cooldownSecondsSpan) cooldownSecondsSpan.textContent = "30s";
+    if (emergencyInput) {
+      emergencyInput.value = "";
+      emergencyInput.focus();
+    }
+    if (btnEmergencyConfirm) btnEmergencyConfirm.disabled = true;
+
+    if (emergencyCooldownInterval) clearInterval(emergencyCooldownInterval);
+    emergencyCooldownInterval = setInterval(() => {
+      emergencyCooldownRemaining = Math.max(0, emergencyCooldownRemaining - 1);
+      if (emergencyCooldownRemaining > 0) {
+        if (cooldownSecondsSpan) cooldownSecondsSpan.textContent = `${emergencyCooldownRemaining}s`;
+      } else {
+        if (cooldownSecondsSpan) cooldownSecondsSpan.textContent = "Ready";
+        clearInterval(emergencyCooldownInterval);
+        emergencyCooldownInterval = null;
+      }
+      checkEmergencyConfirmation();
+    }, 1000);
+  }
+
+  function closeEmergencyModal() {
+    if (!emergencyModal) return;
+    emergencyModal.classList.add("hidden");
+    if (emergencyCooldownInterval) {
+      clearInterval(emergencyCooldownInterval);
+      emergencyCooldownInterval = null;
+    }
+  }
+
+  function checkEmergencyConfirmation() {
+    if (!btnEmergencyConfirm || !emergencyInput) return;
+    const isCooldownDone = emergencyCooldownRemaining <= 0;
+    const isTextMatch = emergencyInput.value.trim() === EMERGENCY_CONFIRMATION_TEXT;
+    btnEmergencyConfirm.disabled = !(isCooldownDone && isTextMatch);
+  }
+
+  if (btnEmergencyExit) {
+    btnEmergencyExit.addEventListener("click", openEmergencyModal);
+  }
+  if (btnEmergencyCancel) {
+    btnEmergencyCancel.addEventListener("click", closeEmergencyModal);
+  }
+  if (emergencyInput) {
+    emergencyInput.addEventListener("input", checkEmergencyConfirmation);
+  }
+  if (btnEmergencyConfirm) {
+    btnEmergencyConfirm.addEventListener("click", () => {
+      if (emergencyCooldownRemaining > 0) return;
+      if (!emergencyInput || emergencyInput.value.trim() !== EMERGENCY_CONFIRMATION_TEXT) return;
+
+      closeEmergencyModal();
+      chrome.runtime.sendMessage({ action: "EMERGENCY_EXIT" }, (res) => {
+        if (res && res.timerState) {
+          timerState = res.timerState;
+          renderAll();
+        }
+      });
+    });
+  }
+
   // Event Listeners: Timer Actions
   btnToggle.addEventListener("click", async () => {
+    const isStrictFocus = Boolean(
+      settings.strictModeEnabled &&
+      timerState.isRunning &&
+      (timerState.phase || "focus") === "focus"
+    );
+    if (isStrictFocus) return; // Strict lock: cannot pause running focus
+
     const action = timerState.isRunning ? "PAUSE" : "START";
     if (action === "START" && (timerState.phase || "focus") === "focus") {
       await saveCurrentLabelToRecents();
@@ -394,6 +550,13 @@
   });
 
   btnReset.addEventListener("click", () => {
+    const isStrictFocus = Boolean(
+      settings.strictModeEnabled &&
+      timerState.isRunning &&
+      (timerState.phase || "focus") === "focus"
+    );
+    if (isStrictFocus) return; // Strict lock: cannot reset running focus
+
     chrome.runtime.sendMessage({ action: "RESET" }, (res) => {
       if (res && res.timerState) {
         timerState = res.timerState;
@@ -403,6 +566,13 @@
   });
 
   btnSkip.addEventListener("click", () => {
+    const isStrictFocus = Boolean(
+      settings.strictModeEnabled &&
+      timerState.isRunning &&
+      (timerState.phase || "focus") === "focus"
+    );
+    if (isStrictFocus) return; // Strict lock: cannot skip running focus
+
     chrome.runtime.sendMessage({ action: "SKIP" }, (res) => {
       if (res && res.timerState) {
         timerState = res.timerState;
@@ -414,6 +584,13 @@
   // Event Listeners: Phase Tabs
   tabButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
+      const isStrictFocus = Boolean(
+        settings.strictModeEnabled &&
+        timerState.isRunning &&
+        (timerState.phase || "focus") === "focus"
+      );
+      if (isStrictFocus) return; // Strict lock: cannot switch phase during strict focus
+
       const targetPhase = btn.dataset.phase;
       if (targetPhase === timerState.phase) return;
 

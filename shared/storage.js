@@ -24,7 +24,8 @@
     topPillEnabled: true,
     tabTitleTimerEnabled: true,
     theme: "dark",               // 'dark' | 'light' | 'system'
-    dailyGoalMinutes: 120       // target daily focus in minutes
+    dailyGoalMinutes: 120,      // target daily focus in minutes
+    strictModeEnabled: false    // unbreakable focus mode
   };
 
   const DEFAULT_TIMER_STATE = {
@@ -39,7 +40,8 @@
     sessionId: null,            // unique ID for active focus session
     sessionStartedAt: null,     // timestamp when active focus session started
     plannedMs: null,            // duration planned for active session
-    label: ""                   // current task label
+    label: "",                  // current task label
+    tempUnblockUntil: null      // timestamp until temporary unblock expires
   };
 
   const PHASES = {
