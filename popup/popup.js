@@ -520,6 +520,7 @@
 
       closeEmergencyModal();
       chrome.runtime.sendMessage({ action: "EMERGENCY_EXIT" }, (res) => {
+        if (chrome.runtime.lastError) return;
         if (res && res.timerState) {
           timerState = res.timerState;
           renderAll();
@@ -542,6 +543,7 @@
       await saveCurrentLabelToRecents();
     }
     chrome.runtime.sendMessage({ action, label: timerState.label || "" }, (res) => {
+      if (chrome.runtime.lastError) return;
       if (res && res.timerState) {
         timerState = res.timerState;
         renderAll();
@@ -558,6 +560,7 @@
     if (isStrictFocus) return; // Strict lock: cannot reset running focus
 
     chrome.runtime.sendMessage({ action: "RESET" }, (res) => {
+      if (chrome.runtime.lastError) return;
       if (res && res.timerState) {
         timerState = res.timerState;
         renderAll();
@@ -574,6 +577,7 @@
     if (isStrictFocus) return; // Strict lock: cannot skip running focus
 
     chrome.runtime.sendMessage({ action: "SKIP" }, (res) => {
+      if (chrome.runtime.lastError) return;
       if (res && res.timerState) {
         timerState = res.timerState;
         renderAll();
@@ -595,6 +599,7 @@
       if (targetPhase === timerState.phase) return;
 
       chrome.runtime.sendMessage({ action: "SWITCH_PHASE", phase: targetPhase }, (res) => {
+        if (chrome.runtime.lastError) return;
         if (res && res.timerState) {
           timerState = res.timerState;
           renderAll();

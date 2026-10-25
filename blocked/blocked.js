@@ -147,6 +147,7 @@
       closeAllowModal();
 
       chrome.runtime.sendMessage({ action: "ALLOW_5_MINUTES" }, (res) => {
+        if (chrome.runtime.lastError) return;
         if (res && res.success) {
           const urlParams = new URLSearchParams(window.location.search);
           const targetUrl = urlParams.get("url") || document.referrer;

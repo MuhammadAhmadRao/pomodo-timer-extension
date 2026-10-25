@@ -253,6 +253,7 @@
 
       const action = timerState.isRunning ? "PAUSE" : "START";
       chrome.runtime.sendMessage({ action }, (res) => {
+        if (chrome.runtime.lastError) return;
         if (res && res.timerState) {
           timerState = res.timerState;
           updateAll();
@@ -271,6 +272,7 @@
       if (isStrictFocus) return;
 
       chrome.runtime.sendMessage({ action: "SKIP" }, (res) => {
+        if (chrome.runtime.lastError) return;
         if (res && res.timerState) {
           timerState = res.timerState;
           updateAll();

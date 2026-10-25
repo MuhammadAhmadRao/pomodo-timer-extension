@@ -68,23 +68,31 @@ async function recordSession(entry) {
 
 // Initialize on install or startup
 chrome.runtime.onInstalled.addListener(async () => {
-  await initializeStorage();
-  await syncRulesAndBadge();
+  try {
+    await initializeStorage();
+    await syncRulesAndBadge();
 
-  // Create context menu item on install (not on every SW wake-up)
-  if (chrome.contextMenus) {
-    chrome.contextMenus.create({
-      id: "block-current-site",
-      title: "Block this site during focus",
-      contexts: ["page"]
-    }, () => {
-      if (chrome.runtime.lastError) {}
-    });
+    // Create context menu item on install (not on every SW wake-up)
+    if (chrome.contextMenus) {
+      chrome.contextMenus.create({
+        id: "block-current-site",
+        title: "Block this site during focus",
+        contexts: ["page"]
+      }, () => {
+        if (chrome.runtime.lastError) {}
+      });
+    }
+  } catch (err) {
+    console.warn("onInstalled initialization error:", err);
   }
 });
 
 chrome.runtime.onStartup.addListener(async () => {
-  await syncRulesAndBadge();
+  try {
+    await syncRulesAndBadge();
+  } catch (err) {
+    console.warn("onStartup synchronization error:", err);
+  }
 });
 
 /**
@@ -122,17 +130,21 @@ async function initializeStorage() {
  * Handles phase completion, temporary unblock expiry, and backup alarms
  */
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === ALARM_NAME) {
-    await handlePhaseCompletion();
-  } else if (alarm.name === BADGE_BACKUP_ALARM) {
-    await updateBadgeAndIcon();
-  } else if (alarm.name === TEMP_UNBLOCK_ALARM) {
-    const { timerState = FocusTimerStorage.DEFAULT_TIMER_STATE } =
-      await FocusTimerStorage.getStorage(["timerState"]);
-    await FocusTimerStorage.setStorage({
-      timerState: { ...timerState, tempUnblockUntil: null }
-    });
-    await syncRulesAndBadge();
+  try {
+    if (alarm.name === ALARM_NAME) {
+      await handlePhaseCompletion();
+    } else if (alarm.name === BADGE_BACKUP_ALARM) {
+      await updateBadgeAndIcon();
+    } else if (alarm.name === TEMP_UNBLOCK_ALARM) {
+      const { timerState = FocusTimerStorage.DEFAULT_TIMER_STATE } =
+        await FocusTimerStorage.getStorage(["timerState"]);
+      await FocusTimerStorage.setStorage({
+        timerState: { ...timerState, tempUnblockUntil: null }
+      });
+      await syncRulesAndBadge();
+    }
+  } catch (err) {
+    console.warn("Alarm processing error:", err);
   }
 });
 
@@ -269,8 +281,22 @@ function notifyClients(message) {
  * - Active ONLY when phase === 'focus' and isRunning === true
  * - Cleared during breaks, paused state, or when focus is not running.
  * - Supports both 'blocklist' and 'allowlist' modes in a single serialized updateDynamicRules call.
+ * - Serialized via Promise queue to eliminate race conditions between concurrent events.
  */
+let blockingRulesSyncQueue = Promise.resolve();
+
 async function syncBlockingRules(settings, timerState) {
+  blockingRulesSyncQueue = blockingRulesSyncQueue
+    .then(async () => {
+      await executeSyncBlockingRules(settings, timerState);
+    })
+    .catch((err) => {
+      console.warn("syncBlockingRules error:", err);
+    });
+  return blockingRulesSyncQueue;
+}
+
+async function executeSyncBlockingRules(settings, timerState) {
   const isTempUnblocked = Boolean(
     timerState.tempUnblockUntil && timerState.tempUnblockUntil > Date.now()
   );
@@ -421,6 +447,7 @@ async function redirectUnallowedOpenTabs(allowedSites) {
   const blockedPrefix = chrome.runtime.getURL("blocked/blocked.html");
 
   chrome.tabs.query({}, (tabs) => {
+    if (chrome.runtime.lastError || !Array.isArray(tabs)) return;
     tabs.forEach((tab) => {
       if (!tab.id || !tab.url) return;
       if (!/^https?:\/\//i.test(tab.url)) return;
@@ -457,6 +484,7 @@ async function redirectBlockedOpenTabs(blockedSites) {
   const blockedPrefix = chrome.runtime.getURL("blocked/blocked.html");
 
   chrome.tabs.query({}, (tabs) => {
+    if (chrome.runtime.lastError || !Array.isArray(tabs)) return;
     tabs.forEach((tab) => {
       if (!tab.id || !tab.url) return;
       if (!/^https?:\/\//i.test(tab.url)) return;
@@ -487,6 +515,7 @@ async function restoreBlockedTabs() {
   const blockedPrefix = chrome.runtime.getURL("blocked/blocked.html");
 
   chrome.tabs.query({}, (tabs) => {
+    if (chrome.runtime.lastError || !Array.isArray(tabs)) return;
     tabs.forEach((tab) => {
       if (!tab.id || !tab.url || !tab.url.startsWith(blockedPrefix)) return;
       try {
@@ -714,143 +743,526 @@ async function syncRulesAndBadge() {
  */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
-    const { settings = FocusTimerStorage.DEFAULT_SETTINGS, timerState = FocusTimerStorage.DEFAULT_TIMER_STATE } =
-      await FocusTimerStorage.getStorage(["settings", "timerState"]);
+    try {
+      const { settings = FocusTimerStorage.DEFAULT_SETTINGS, timerState = FocusTimerStorage.DEFAULT_TIMER_STATE } =
+        await FocusTimerStorage.getStorage(["settings", "timerState"]);
 
-    const isStrictFocus = Boolean(
-      settings.strictModeEnabled &&
-      timerState.isRunning &&
-      timerState.phase === "focus"
-    );
+      const isStrictFocus = Boolean(
+        settings.strictModeEnabled &&
+        timerState.isRunning &&
+        timerState.phase === "focus"
+      );
 
-    switch (message.action) {
-      case "START": {
-        const remaining = timerState.remainingWhenPaused || (settings.focusDuration * 60 * 1000);
-        const endTime = Date.now() + remaining;
-        const isFocus = timerState.phase === "focus";
+      switch (message.action) {
+        case "START": {
+          const remaining = timerState.remainingWhenPaused || (settings.focusDuration * 60 * 1000);
+          const endTime = Date.now() + remaining;
+          const isFocus = timerState.phase === "focus";
 
-        let sessionId = timerState.sessionId;
-        let sessionStartedAt = timerState.sessionStartedAt;
-        let plannedMs = timerState.plannedMs;
+          let sessionId = timerState.sessionId;
+          let sessionStartedAt = timerState.sessionStartedAt;
+          let plannedMs = timerState.plannedMs;
 
-        if (isFocus && (!sessionId || !timerState.isStarted)) {
-          sessionId = "sess_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
-          sessionStartedAt = Date.now();
-          plannedMs = timerState.totalDuration || remaining;
-        }
-
-        const label = message.label !== undefined ? message.label : (timerState.label || "");
-
-        const updated = {
-          ...timerState,
-          isStarted: true,
-          isRunning: true,
-          endTime,
-          totalDuration: timerState.totalDuration || remaining,
-          sessionId: isFocus ? sessionId : null,
-          sessionStartedAt: isFocus ? sessionStartedAt : null,
-          plannedMs: isFocus ? plannedMs : null,
-          label
-        };
-
-        await FocusTimerStorage.setStorage({ timerState: updated });
-        await chrome.alarms.create(ALARM_NAME, { when: endTime });
-        await syncRulesAndBadge();
-        sendResponse({ success: true, timerState: updated });
-        break;
-      }
-
-      case "PAUSE": {
-        if (isStrictFocus) {
-          sendResponse({ success: false, error: "Strict mode is active. Pausing is disabled during focus." });
-          break;
-        }
-
-        const remaining = Math.max(0, (timerState.endTime || 0) - Date.now());
-        const updated = {
-          ...timerState,
-          isStarted: true, // Remains started, but paused
-          isRunning: false,
-          remainingWhenPaused: remaining,
-          endTime: null
-        };
-
-        await chrome.alarms.clear(ALARM_NAME);
-        await FocusTimerStorage.setStorage({ timerState: updated });
-        await syncRulesAndBadge();
-        sendResponse({ success: true, timerState: updated });
-        break;
-      }
-
-      case "RESET": {
-        if (isStrictFocus) {
-          sendResponse({ success: false, error: "Strict mode is active. Resetting is disabled during focus." });
-          break;
-        }
-
-        await chrome.alarms.clear(ALARM_NAME);
-        await chrome.alarms.clear(TEMP_UNBLOCK_ALARM);
-
-        // If focus session was active, log partial time if >= 1 min
-        if (timerState.phase === "focus" && (timerState.isStarted || timerState.isRunning)) {
-          const remaining = timerState.isRunning
-            ? Math.max(0, (timerState.endTime || 0) - Date.now())
-            : (timerState.remainingWhenPaused || 0);
-          const total = timerState.totalDuration || (settings.focusDuration * 60 * 1000);
-          const focusedMs = Math.max(0, total - remaining);
-
-          if (focusedMs >= 60000 && timerState.sessionId) {
-            const endedAt = Date.now();
-            const startedAt = timerState.sessionStartedAt || (endedAt - focusedMs);
-            await recordSession({
-              id: timerState.sessionId,
-              startedAt,
-              endedAt,
-              plannedMs: total,
-              focusedMs,
-              completed: false,
-              label: timerState.label || ""
-            });
+          if (isFocus && (!sessionId || !timerState.isStarted)) {
+            sessionId = "sess_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+            sessionStartedAt = Date.now();
+            plannedMs = timerState.totalDuration || remaining;
           }
+
+          const label = message.label !== undefined ? message.label : (timerState.label || "");
+
+          const updated = {
+            ...timerState,
+            isStarted: true,
+            isRunning: true,
+            endTime,
+            totalDuration: timerState.totalDuration || remaining,
+            sessionId: isFocus ? sessionId : null,
+            sessionStartedAt: isFocus ? sessionStartedAt : null,
+            plannedMs: isFocus ? plannedMs : null,
+            label
+          };
+
+          await FocusTimerStorage.setStorage({ timerState: updated });
+          await chrome.alarms.create(ALARM_NAME, { when: endTime });
+          await syncRulesAndBadge();
+          sendResponse({ success: true, timerState: updated });
+          break;
         }
 
-        const durationMinutes =
-          timerState.phase === "focus"
-            ? settings.focusDuration
-            : timerState.phase === "shortBreak"
-            ? settings.shortBreakDuration
-            : settings.longBreakDuration;
+        case "PAUSE": {
+          if (isStrictFocus) {
+            sendResponse({ success: false, error: "Strict mode is active. Pausing is disabled during focus." });
+            break;
+          }
 
-        const durationMs = durationMinutes * 60 * 1000;
-        const updated = {
-          ...timerState,
-          isStarted: false, // Session stopped/idle
-          isRunning: false,
-          endTime: null,
-          totalDuration: durationMs,
-          remainingWhenPaused: durationMs,
-          sessionId: null,
-          sessionStartedAt: null,
-          plannedMs: null,
-          tempUnblockUntil: null
-        };
+          const remaining = Math.max(0, (timerState.endTime || 0) - Date.now());
+          const updated = {
+            ...timerState,
+            isStarted: true, // Remains started, but paused
+            isRunning: false,
+            remainingWhenPaused: remaining,
+            endTime: null
+          };
 
-        await FocusTimerStorage.setStorage({ timerState: updated });
+          await chrome.alarms.clear(ALARM_NAME);
+          await FocusTimerStorage.setStorage({ timerState: updated });
+          await syncRulesAndBadge();
+          sendResponse({ success: true, timerState: updated });
+          break;
+        }
+
+        case "RESET": {
+          if (isStrictFocus) {
+            sendResponse({ success: false, error: "Strict mode is active. Resetting is disabled during focus." });
+            break;
+          }
+
+          await chrome.alarms.clear(ALARM_NAME);
+          await chrome.alarms.clear(TEMP_UNBLOCK_ALARM);
+
+          // If focus session was active, log partial time if >= 1 min
+          if (timerState.phase === "focus" && (timerState.isStarted || timerState.isRunning)) {
+            const remaining = timerState.isRunning
+              ? Math.max(0, (timerState.endTime || 0) - Date.now())
+              : (timerState.remainingWhenPaused || 0);
+            const total = timerState.totalDuration || (settings.focusDuration * 60 * 1000);
+            const focusedMs = Math.max(0, total - remaining);
+
+            if (focusedMs >= 60000 && timerState.sessionId) {
+              const endedAt = Date.now();
+              const startedAt = timerState.sessionStartedAt || (endedAt - focusedMs);
+              await recordSession({
+                id: timerState.sessionId,
+                startedAt,
+                endedAt,
+                plannedMs: total,
+                focusedMs,
+                completed: false,
+                label: timerState.label || ""
+              });
+            }
+          }
+
+          const durationMinutes =
+            timerState.phase === "focus"
+              ? settings.focusDuration
+              : timerState.phase === "shortBreak"
+              ? settings.shortBreakDuration
+              : settings.longBreakDuration;
+
+          const durationMs = durationMinutes * 60 * 1000;
+          const updated = {
+            ...timerState,
+            isStarted: false, // Session stopped/idle
+            isRunning: false,
+            endTime: null,
+            totalDuration: durationMs,
+            remainingWhenPaused: durationMs,
+            sessionId: null,
+            sessionStartedAt: null,
+            plannedMs: null,
+            tempUnblockUntil: null
+          };
+
+          await FocusTimerStorage.setStorage({ timerState: updated });
+          await syncRulesAndBadge();
+          sendResponse({ success: true, timerState: updated });
+          break;
+        }
+
+        case "SKIP": {
+          if (isStrictFocus) {
+            sendResponse({ success: false, error: "Strict mode is active. Skipping is disabled during focus." });
+            break;
+          }
+
+          await chrome.alarms.clear(ALARM_NAME);
+          await chrome.alarms.clear(TEMP_UNBLOCK_ALARM);
+
+          // If focus session was active, log early exit if >= 1 min
+          if (timerState.phase === "focus") {
+            const remaining = timerState.isRunning
+              ? Math.max(0, (timerState.endTime || 0) - Date.now())
+              : (timerState.remainingWhenPaused || 0);
+            const total = timerState.totalDuration || (settings.focusDuration * 60 * 1000);
+            const focusedMs = Math.max(0, total - remaining);
+
+            if (focusedMs >= 60000 && timerState.sessionId) {
+              const endedAt = Date.now();
+              const startedAt = timerState.sessionStartedAt || (endedAt - focusedMs);
+              await recordSession({
+                id: timerState.sessionId,
+                startedAt,
+                endedAt,
+                plannedMs: total,
+                focusedMs,
+                completed: false,
+                label: timerState.label || ""
+              });
+            }
+          }
+
+          await handlePhaseCompletion({ isSkip: true });
+          const fresh = await FocusTimerStorage.getStorage(["timerState"]);
+          sendResponse({ success: true, timerState: fresh.timerState });
+          break;
+        }
+
+        case "SWITCH_PHASE": {
+          if (isStrictFocus) {
+            sendResponse({ success: false, error: "Strict mode is active. Switching phase is disabled during focus." });
+            break;
+          }
+
+          await chrome.alarms.clear(ALARM_NAME);
+          await chrome.alarms.clear(TEMP_UNBLOCK_ALARM);
+          const requestedPhase = message.phase; // 'focus' | 'shortBreak' | 'longBreak'
+
+          // If abandoning an in-progress focus session
+          if (timerState.phase === "focus" && requestedPhase !== "focus" && (timerState.isStarted || timerState.isRunning)) {
+            const remaining = timerState.isRunning
+              ? Math.max(0, (timerState.endTime || 0) - Date.now())
+              : (timerState.remainingWhenPaused || 0);
+            const total = timerState.totalDuration || (settings.focusDuration * 60 * 1000);
+            const focusedMs = Math.max(0, total - remaining);
+
+            if (focusedMs >= 60000 && timerState.sessionId) {
+              const endedAt = Date.now();
+              const startedAt = timerState.sessionStartedAt || (endedAt - focusedMs);
+              await recordSession({
+                id: timerState.sessionId,
+                startedAt,
+                endedAt,
+                plannedMs: total,
+                focusedMs,
+                completed: false,
+                label: timerState.label || ""
+              });
+            }
+          }
+
+          const durationMinutes =
+            requestedPhase === "focus"
+              ? settings.focusDuration
+              : requestedPhase === "shortBreak"
+              ? settings.shortBreakDuration
+              : settings.longBreakDuration;
+
+          const durationMs = durationMinutes * 60 * 1000;
+          const updated = {
+            ...timerState,
+            phase: requestedPhase,
+            isStarted: false,
+            isRunning: false,
+            endTime: null,
+            totalDuration: durationMs,
+            remainingWhenPaused: durationMs,
+            sessionId: null,
+            sessionStartedAt: null,
+            plannedMs: null,
+            tempUnblockUntil: null
+          };
+
+          await FocusTimerStorage.setStorage({ timerState: updated });
+          await syncRulesAndBadge();
+          sendResponse({ success: true, timerState: updated });
+          break;
+        }
+
+        case "ALLOW_5_MINUTES": {
+          if (isStrictFocus) {
+            sendResponse({ success: false, error: "Strict mode is active. Temporary unblocking is disabled." });
+            break;
+          }
+
+          const unblockDuration = 5 * 60 * 1000;
+          const tempUnblockUntil = Date.now() + unblockDuration;
+          const updated = {
+            ...timerState,
+            tempUnblockUntil
+          };
+
+          await FocusTimerStorage.setStorage({ timerState: updated });
+          await chrome.alarms.create(TEMP_UNBLOCK_ALARM, { when: tempUnblockUntil });
+          await syncRulesAndBadge();
+          sendResponse({ success: true, tempUnblockUntil });
+          break;
+        }
+
+        case "EMERGENCY_EXIT": {
+          await chrome.alarms.clear(ALARM_NAME);
+          await chrome.alarms.clear(TEMP_UNBLOCK_ALARM);
+
+          if (timerState.phase === "focus" && (timerState.isStarted || timerState.isRunning)) {
+            const remaining = timerState.isRunning
+              ? Math.max(0, (timerState.endTime || 0) - Date.now())
+              : (timerState.remainingWhenPaused || 0);
+            const total = timerState.totalDuration || (settings.focusDuration * 60 * 1000);
+            const focusedMs = Math.max(0, total - remaining);
+
+            if (focusedMs >= 60000 && timerState.sessionId) {
+              const endedAt = Date.now();
+              const startedAt = timerState.sessionStartedAt || (endedAt - focusedMs);
+              await recordSession({
+                id: timerState.sessionId,
+                startedAt,
+                endedAt,
+                plannedMs: total,
+                focusedMs,
+                completed: false,
+                label: timerState.label || ""
+              });
+            }
+          }
+
+          const durationMinutes = settings.focusDuration;
+          const durationMs = durationMinutes * 60 * 1000;
+          const updated = {
+            ...timerState,
+            isStarted: false,
+            isRunning: false,
+            phase: "focus",
+            endTime: null,
+            totalDuration: durationMs,
+            remainingWhenPaused: durationMs,
+            sessionId: null,
+            sessionStartedAt: null,
+            plannedMs: null,
+            tempUnblockUntil: null
+          };
+
+          await FocusTimerStorage.setStorage({ timerState: updated });
+          await syncRulesAndBadge();
+          sendResponse({ success: true, timerState: updated });
+          break;
+        }
+
+        case "SET_LABEL": {
+          const newLabel = (message.label || "").trim();
+          const updated = {
+            ...timerState,
+            label: newLabel
+          };
+          await FocusTimerStorage.setStorage({ timerState: updated });
+          sendResponse({ success: true, timerState: updated });
+          break;
+        }
+
+        case "SYNC_STATE": {
+          await syncRulesAndBadge();
+          sendResponse({ success: true });
+          break;
+        }
+
+        default:
+          sendResponse({ error: "Unknown action" });
+      }
+    } catch (err) {
+      console.warn("Message processing error:", err);
+      sendResponse({ success: false, error: err.message });
+    }
+  })();
+
+  return true; // Keep message channel open for async response
+});
+
+// React to storage changes (e.g. settings updated from options page)
+chrome.storage.onChanged.addListener(async (changes, area) => {
+  if (area === "local") {
+    if (changes.settings || changes.timerState) {
+      try {
         await syncRulesAndBadge();
-        sendResponse({ success: true, timerState: updated });
-        break;
+      } catch (err) {
+        console.warn("Storage change sync error:", err);
+      }
+    }
+  }
+});
+
+/**
+ * Context Menu: "Block this site during focus"
+ */
+if (chrome.contextMenus && chrome.contextMenus.onClicked) {
+  chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    try {
+      if (info.menuItemId !== "block-current-site") return;
+
+      const { settings = FocusTimerStorage.DEFAULT_SETTINGS, timerState = FocusTimerStorage.DEFAULT_TIMER_STATE } =
+        await FocusTimerStorage.getStorage(["settings", "timerState"]);
+
+      const isStrictFocus = Boolean(
+        settings.strictModeEnabled &&
+        timerState.isRunning &&
+        timerState.phase === "focus"
+      );
+
+      // Reject in Strict Mode during running focus
+      if (isStrictFocus) {
+        chrome.notifications.create({
+          type: "basic",
+          iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+          title: "🔒 Strict Mode Active",
+          message: "Cannot modify blocklist while a strict focus session is running.",
+          priority: 2
+        });
+        return;
       }
 
-      case "SKIP": {
+      const pageUrl = tab?.url || info.pageUrl || "";
+
+      // Ignore chrome://, extension pages, and non-http(s) pages
+      if (!pageUrl || !/^https?:\/\//i.test(pageUrl)) {
+        chrome.notifications.create({
+          type: "basic",
+          iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+          title: "Focus Timer",
+          message: "Cannot block internal browser or extension pages.",
+          priority: 1
+        });
+        return;
+      }
+
+      let domain = "";
+      try {
+        const parsed = new URL(pageUrl);
+        domain = parsed.hostname.toLowerCase().replace(/^www\./, "");
+      } catch (e) {
+        return;
+      }
+
+      if (!domain) return;
+
+      const isAllowlistMode = settings.blockingMode === "allowlist";
+      const targetList = isAllowlistMode ? [...(settings.allowedSites || [])] : [...(settings.blockedSites || [])];
+
+      const isDuplicate = targetList.some(
+        (site) => site.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "") === domain
+      );
+
+      if (isDuplicate) {
+        chrome.notifications.create({
+          type: "basic",
+          iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+          title: "Focus Timer",
+          message: `${domain} is already in your ${isAllowlistMode ? "allowlist" : "blocklist"}.`,
+          priority: 1
+        });
+        return;
+      }
+
+      targetList.push(domain);
+      const updatedSettings = {
+        ...settings,
+        [isAllowlistMode ? "allowedSites" : "blockedSites"]: targetList
+      };
+
+      await FocusTimerStorage.setStorage({ settings: updatedSettings });
+      await syncRulesAndBadge();
+
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+        title: isAllowlistMode ? "✅ Site Allowed" : "🛡️ Site Blocked",
+        message: isAllowlistMode
+          ? `${domain} will remain accessible during focus sessions.`
+          : `${domain} will now be blocked during focus sessions.`,
+        priority: 1
+      });
+    } catch (err) {
+      console.warn("Context menu click error:", err);
+    }
+  });
+}
+
+/**
+ * Keyboard Shortcuts (manifest commands)
+ */
+if (chrome.commands && chrome.commands.onCommand) {
+  chrome.commands.onCommand.addListener(async (command) => {
+    try {
+      const { settings = FocusTimerStorage.DEFAULT_SETTINGS, timerState = FocusTimerStorage.DEFAULT_TIMER_STATE } =
+        await FocusTimerStorage.getStorage(["settings", "timerState"]);
+
+      const isStrictFocus = Boolean(
+        settings.strictModeEnabled &&
+        timerState.isRunning &&
+        timerState.phase === "focus"
+      );
+
+      if (command === "toggle-timer") {
+        if (timerState.isRunning) {
+          // Attempting to pause
+          if (isStrictFocus) {
+            chrome.notifications.create({
+              type: "basic",
+              iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+              title: "🔒 Strict Mode Active",
+              message: "Pausing is disabled during a strict focus session.",
+              priority: 2
+            });
+            return;
+          }
+
+          const remaining = Math.max(0, (timerState.endTime || 0) - Date.now());
+          const updated = {
+            ...timerState,
+            isStarted: true,
+            isRunning: false,
+            remainingWhenPaused: remaining,
+            endTime: null
+          };
+
+          await chrome.alarms.clear(ALARM_NAME);
+          await FocusTimerStorage.setStorage({ timerState: updated });
+          await syncRulesAndBadge();
+        } else {
+          // Attempting to start/resume
+          const remaining = timerState.remainingWhenPaused || (settings.focusDuration * 60 * 1000);
+          const endTime = Date.now() + remaining;
+          const isFocus = timerState.phase === "focus";
+
+          let sessionId = timerState.sessionId;
+          let sessionStartedAt = timerState.sessionStartedAt;
+          let plannedMs = timerState.plannedMs;
+
+          if (isFocus && (!sessionId || !timerState.isStarted)) {
+            sessionId = "sess_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+            sessionStartedAt = Date.now();
+            plannedMs = timerState.totalDuration || remaining;
+          }
+
+          const updated = {
+            ...timerState,
+            isStarted: true,
+            isRunning: true,
+            endTime,
+            totalDuration: timerState.totalDuration || remaining,
+            sessionId: isFocus ? sessionId : null,
+            sessionStartedAt: isFocus ? sessionStartedAt : null,
+            plannedMs: isFocus ? plannedMs : null
+          };
+
+          await FocusTimerStorage.setStorage({ timerState: updated });
+          await chrome.alarms.create(ALARM_NAME, { when: endTime });
+          await syncRulesAndBadge();
+        }
+      } else if (command === "skip-phase") {
+        // Attempting to skip
         if (isStrictFocus) {
-          sendResponse({ success: false, error: "Strict mode is active. Skipping is disabled during focus." });
-          break;
+          chrome.notifications.create({
+            type: "basic",
+            iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+            title: "🔒 Strict Mode Active",
+            message: "Skipping is disabled during a strict focus session.",
+            priority: 2
+          });
+          return;
         }
 
         await chrome.alarms.clear(ALARM_NAME);
         await chrome.alarms.clear(TEMP_UNBLOCK_ALARM);
 
-        // If focus session was active, log early exit if >= 1 min
         if (timerState.phase === "focus") {
           const remaining = timerState.isRunning
             ? Math.max(0, (timerState.endTime || 0) - Date.now())
@@ -874,375 +1286,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         await handlePhaseCompletion({ isSkip: true });
-        const fresh = await FocusTimerStorage.getStorage(["timerState"]);
-        sendResponse({ success: true, timerState: fresh.timerState });
-        break;
       }
-
-      case "SWITCH_PHASE": {
-        if (isStrictFocus) {
-          sendResponse({ success: false, error: "Strict mode is active. Switching phase is disabled during focus." });
-          break;
-        }
-
-        await chrome.alarms.clear(ALARM_NAME);
-        await chrome.alarms.clear(TEMP_UNBLOCK_ALARM);
-        const requestedPhase = message.phase; // 'focus' | 'shortBreak' | 'longBreak'
-
-        // If abandoning an in-progress focus session
-        if (timerState.phase === "focus" && requestedPhase !== "focus" && (timerState.isStarted || timerState.isRunning)) {
-          const remaining = timerState.isRunning
-            ? Math.max(0, (timerState.endTime || 0) - Date.now())
-            : (timerState.remainingWhenPaused || 0);
-          const total = timerState.totalDuration || (settings.focusDuration * 60 * 1000);
-          const focusedMs = Math.max(0, total - remaining);
-
-          if (focusedMs >= 60000 && timerState.sessionId) {
-            const endedAt = Date.now();
-            const startedAt = timerState.sessionStartedAt || (endedAt - focusedMs);
-            await recordSession({
-              id: timerState.sessionId,
-              startedAt,
-              endedAt,
-              plannedMs: total,
-              focusedMs,
-              completed: false,
-              label: timerState.label || ""
-            });
-          }
-        }
-
-        const durationMinutes =
-          requestedPhase === "focus"
-            ? settings.focusDuration
-            : requestedPhase === "shortBreak"
-            ? settings.shortBreakDuration
-            : settings.longBreakDuration;
-
-        const durationMs = durationMinutes * 60 * 1000;
-        const updated = {
-          ...timerState,
-          phase: requestedPhase,
-          isStarted: false,
-          isRunning: false,
-          endTime: null,
-          totalDuration: durationMs,
-          remainingWhenPaused: durationMs,
-          sessionId: null,
-          sessionStartedAt: null,
-          plannedMs: null,
-          tempUnblockUntil: null
-        };
-
-        await FocusTimerStorage.setStorage({ timerState: updated });
-        await syncRulesAndBadge();
-        sendResponse({ success: true, timerState: updated });
-        break;
-      }
-
-      case "ALLOW_5_MINUTES": {
-        if (isStrictFocus) {
-          sendResponse({ success: false, error: "Strict mode is active. Temporary unblocking is disabled." });
-          break;
-        }
-
-        const unblockDuration = 5 * 60 * 1000;
-        const tempUnblockUntil = Date.now() + unblockDuration;
-        const updated = {
-          ...timerState,
-          tempUnblockUntil
-        };
-
-        await FocusTimerStorage.setStorage({ timerState: updated });
-        await chrome.alarms.create(TEMP_UNBLOCK_ALARM, { when: tempUnblockUntil });
-        await syncRulesAndBadge();
-        sendResponse({ success: true, tempUnblockUntil });
-        break;
-      }
-
-      case "EMERGENCY_EXIT": {
-        await chrome.alarms.clear(ALARM_NAME);
-        await chrome.alarms.clear(TEMP_UNBLOCK_ALARM);
-
-        if (timerState.phase === "focus" && (timerState.isStarted || timerState.isRunning)) {
-          const remaining = timerState.isRunning
-            ? Math.max(0, (timerState.endTime || 0) - Date.now())
-            : (timerState.remainingWhenPaused || 0);
-          const total = timerState.totalDuration || (settings.focusDuration * 60 * 1000);
-          const focusedMs = Math.max(0, total - remaining);
-
-          if (focusedMs >= 60000 && timerState.sessionId) {
-            const endedAt = Date.now();
-            const startedAt = timerState.sessionStartedAt || (endedAt - focusedMs);
-            await recordSession({
-              id: timerState.sessionId,
-              startedAt,
-              endedAt,
-              plannedMs: total,
-              focusedMs,
-              completed: false,
-              label: timerState.label || ""
-            });
-          }
-        }
-
-        const durationMinutes = settings.focusDuration;
-        const durationMs = durationMinutes * 60 * 1000;
-        const updated = {
-          ...timerState,
-          isStarted: false,
-          isRunning: false,
-          phase: "focus",
-          endTime: null,
-          totalDuration: durationMs,
-          remainingWhenPaused: durationMs,
-          sessionId: null,
-          sessionStartedAt: null,
-          plannedMs: null,
-          tempUnblockUntil: null
-        };
-
-        await FocusTimerStorage.setStorage({ timerState: updated });
-        await syncRulesAndBadge();
-        sendResponse({ success: true, timerState: updated });
-        break;
-      }
-
-      case "SET_LABEL": {
-        const newLabel = (message.label || "").trim();
-        const updated = {
-          ...timerState,
-          label: newLabel
-        };
-        await FocusTimerStorage.setStorage({ timerState: updated });
-        sendResponse({ success: true, timerState: updated });
-        break;
-      }
-
-      case "SYNC_STATE": {
-        await syncRulesAndBadge();
-        sendResponse({ success: true });
-        break;
-      }
-
-      default:
-        sendResponse({ error: "Unknown action" });
-    }
-  })();
-
-  return true; // Keep message channel open for async response
-});
-
-// React to storage changes (e.g. settings updated from options page)
-chrome.storage.onChanged.addListener(async (changes, area) => {
-  if (area === "local") {
-    if (changes.settings || changes.timerState) {
-      await syncRulesAndBadge();
-    }
-  }
-});
-
-/**
- * Context Menu: "Block this site during focus"
- */
-if (chrome.contextMenus && chrome.contextMenus.onClicked) {
-  chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-    if (info.menuItemId !== "block-current-site") return;
-
-    const { settings = FocusTimerStorage.DEFAULT_SETTINGS, timerState = FocusTimerStorage.DEFAULT_TIMER_STATE } =
-      await FocusTimerStorage.getStorage(["settings", "timerState"]);
-
-    const isStrictFocus = Boolean(
-      settings.strictModeEnabled &&
-      timerState.isRunning &&
-      timerState.phase === "focus"
-    );
-
-    // Reject in Strict Mode during running focus
-    if (isStrictFocus) {
-      chrome.notifications.create({
-        type: "basic",
-        iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-        title: "🔒 Strict Mode Active",
-        message: "Cannot modify blocklist while a strict focus session is running.",
-        priority: 2
-      });
-      return;
-    }
-
-    const pageUrl = tab?.url || info.pageUrl || "";
-
-    // Ignore chrome://, extension pages, and non-http(s) pages
-    if (!pageUrl || !/^https?:\/\//i.test(pageUrl)) {
-      chrome.notifications.create({
-        type: "basic",
-        iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-        title: "Focus Timer",
-        message: "Cannot block internal browser or extension pages.",
-        priority: 1
-      });
-      return;
-    }
-
-    let domain = "";
-    try {
-      const parsed = new URL(pageUrl);
-      domain = parsed.hostname.toLowerCase().replace(/^www\./, "");
-    } catch (e) {
-      return;
-    }
-
-    if (!domain) return;
-
-    const isAllowlistMode = settings.blockingMode === "allowlist";
-    const targetList = isAllowlistMode ? [...(settings.allowedSites || [])] : [...(settings.blockedSites || [])];
-
-    const isDuplicate = targetList.some(
-      (site) => site.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "") === domain
-    );
-
-    if (isDuplicate) {
-      chrome.notifications.create({
-        type: "basic",
-        iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-        title: "Focus Timer",
-        message: `${domain} is already in your ${isAllowlistMode ? "allowlist" : "blocklist"}.`,
-        priority: 1
-      });
-      return;
-    }
-
-    targetList.push(domain);
-    const updatedSettings = {
-      ...settings,
-      [isAllowlistMode ? "allowedSites" : "blockedSites"]: targetList
-    };
-
-    await FocusTimerStorage.setStorage({ settings: updatedSettings });
-    await syncRulesAndBadge();
-
-    chrome.notifications.create({
-      type: "basic",
-      iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-      title: isAllowlistMode ? "✅ Site Allowed" : "🛡️ Site Blocked",
-      message: isAllowlistMode
-        ? `${domain} will remain accessible during focus sessions.`
-        : `${domain} will now be blocked during focus sessions.`,
-      priority: 1
-    });
-  });
-}
-
-/**
- * Keyboard Shortcuts (manifest commands)
- */
-if (chrome.commands && chrome.commands.onCommand) {
-  chrome.commands.onCommand.addListener(async (command) => {
-    const { settings = FocusTimerStorage.DEFAULT_SETTINGS, timerState = FocusTimerStorage.DEFAULT_TIMER_STATE } =
-      await FocusTimerStorage.getStorage(["settings", "timerState"]);
-
-    const isStrictFocus = Boolean(
-      settings.strictModeEnabled &&
-      timerState.isRunning &&
-      timerState.phase === "focus"
-    );
-
-    if (command === "toggle-timer") {
-      if (timerState.isRunning) {
-        // Attempting to pause
-        if (isStrictFocus) {
-          chrome.notifications.create({
-            type: "basic",
-            iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-            title: "🔒 Strict Mode Active",
-            message: "Pausing is disabled during a strict focus session.",
-            priority: 2
-          });
-          return;
-        }
-
-        const remaining = Math.max(0, (timerState.endTime || 0) - Date.now());
-        const updated = {
-          ...timerState,
-          isStarted: true,
-          isRunning: false,
-          remainingWhenPaused: remaining,
-          endTime: null
-        };
-
-        await chrome.alarms.clear(ALARM_NAME);
-        await FocusTimerStorage.setStorage({ timerState: updated });
-        await syncRulesAndBadge();
-      } else {
-        // Attempting to start/resume
-        const remaining = timerState.remainingWhenPaused || (settings.focusDuration * 60 * 1000);
-        const endTime = Date.now() + remaining;
-        const isFocus = timerState.phase === "focus";
-
-        let sessionId = timerState.sessionId;
-        let sessionStartedAt = timerState.sessionStartedAt;
-        let plannedMs = timerState.plannedMs;
-
-        if (isFocus && (!sessionId || !timerState.isStarted)) {
-          sessionId = "sess_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
-          sessionStartedAt = Date.now();
-          plannedMs = timerState.totalDuration || remaining;
-        }
-
-        const updated = {
-          ...timerState,
-          isStarted: true,
-          isRunning: true,
-          endTime,
-          totalDuration: timerState.totalDuration || remaining,
-          sessionId: isFocus ? sessionId : null,
-          sessionStartedAt: isFocus ? sessionStartedAt : null,
-          plannedMs: isFocus ? plannedMs : null
-        };
-
-        await FocusTimerStorage.setStorage({ timerState: updated });
-        await chrome.alarms.create(ALARM_NAME, { when: endTime });
-        await syncRulesAndBadge();
-      }
-    } else if (command === "skip-phase") {
-      // Attempting to skip
-      if (isStrictFocus) {
-        chrome.notifications.create({
-          type: "basic",
-          iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-          title: "🔒 Strict Mode Active",
-          message: "Skipping is disabled during a strict focus session.",
-          priority: 2
-        });
-        return;
-      }
-
-      await chrome.alarms.clear(ALARM_NAME);
-      await chrome.alarms.clear(TEMP_UNBLOCK_ALARM);
-
-      if (timerState.phase === "focus") {
-        const remaining = timerState.isRunning
-          ? Math.max(0, (timerState.endTime || 0) - Date.now())
-          : (timerState.remainingWhenPaused || 0);
-        const total = timerState.totalDuration || (settings.focusDuration * 60 * 1000);
-        const focusedMs = Math.max(0, total - remaining);
-
-        if (focusedMs >= 60000 && timerState.sessionId) {
-          const endedAt = Date.now();
-          const startedAt = timerState.sessionStartedAt || (endedAt - focusedMs);
-          await recordSession({
-            id: timerState.sessionId,
-            startedAt,
-            endedAt,
-            plannedMs: total,
-            focusedMs,
-            completed: false,
-            label: timerState.label || ""
-          });
-        }
-      }
-
-      await handlePhaseCompletion({ isSkip: true });
+    } catch (err) {
+      console.warn("Keyboard command processing error:", err);
     }
   });
 }

@@ -483,7 +483,7 @@
   function loadRegisteredShortcuts() {
     if (chrome.commands && chrome.commands.getAll) {
       chrome.commands.getAll((commands) => {
-        if (!Array.isArray(commands)) return;
+        if (chrome.runtime.lastError || !Array.isArray(commands)) return;
         commands.forEach((cmd) => {
           if (cmd.name === "toggle-timer" && cmd.shortcut) {
             const el = document.getElementById("key-toggle");
