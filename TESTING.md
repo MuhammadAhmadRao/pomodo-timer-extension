@@ -32,6 +32,15 @@ Using Node.js test runner (`node --test test/*.test.js`) and headless Chromium (
   - Emergency Exit terminates session, logs incomplete session with actual focused time if $\ge 1$ minute, and resets timer to idle.
   - Emergency Exit ignores brief sessions under 1 minute.
   - Temporary unblock (`ALLOW_5_MINUTES`) sets `tempUnblockUntil` and dynamic rules clear when phase ends.
+- [x] **Allowlist Mode DNR & Open Tab Redirection (`test/allowlist-mode.test.js` - 6 unit tests)**:
+  - Low-priority catch-all redirect rule (priority 1) for all `main_frame` `http`/`https` requests to `blocked.html`.
+  - High-priority allow rules (priority 2) for `localhost`, `127.0.0.1`, and each domain in `allowedSites` (`||domain^`).
+  - Subdomain matching (`||github.com^` matches `github.com` and `api.github.com`).
+  - Internal pages, `chrome://`, extension pages, and `localhost` are strictly protected and never blocked.
+  - Open tab redirection with `?url=...` query param on focus start, and automatic restore back to original URL on focus end.
+  - Empty allowlist detection and warning banner.
+  - Mid-session mode switching DNR atomic rule rebuild.
+  - Service worker restart and deterministic rule recovery from storage.
 - [x] **Keyboard Shortcuts & Context Menu (`test/commands-contextmenu.test.js` - 7 unit tests)**:
   - Domain normalization extracts clean hosts (e.g. `https://www.reddit.com/r/tech` -> `reddit.com`).
   - Ignores internal browser pages (`chrome://`, extension pages, `about:blank`, `file://`).
@@ -40,6 +49,8 @@ Using Node.js test runner (`node --test test/*.test.js`) and headless Chromium (
   - Keyboard command `toggle-timer` starts and pauses timer when strict mode is off.
   - Keyboard commands `toggle-timer` (pause) and `skip-phase` are rejected during strict focus.
   - Keyboard commands operate normally during break phases.
+
+
 
 ---
 
@@ -185,6 +196,50 @@ Follow these steps in Google Chrome to visually verify the task label feature an
    - Open Options page (`options/options.html`).
    - In Section 4 (Keyboard Shortcuts), verify the registered shortcuts are displayed.
    - Click the **"⚙️ Customize Shortcuts"** button: verify it opens `chrome://extensions/shortcuts` in a new tab.
+
+---
+
+### G. Verify Allowlist Mode
+1. **Selecting Allowlist Mode & Optional Permission Prompt**:
+   - Open Options page (`options/options.html`).
+   - Under Section 2 ("Website Filtering"), click **"✨ Allowlist Mode (Strict)"**.
+   - If not previously granted, Chrome displays a permission confirmation dialog requesting optional host access (`Read and change your data on all websites`).
+   - Click **Allow**: the UI toggles to Allowlist mode with quick-add chips like **"+ Docs & Learning"** (`github.com`, `stackoverflow.com`, `developer.mozilla.org`, `docs.google.com`).
+   - (If user denies permission, the toggle reverts back to Blocklist mode and explains the permission requirement).
+2. **Empty Allowlist Warning**:
+   - In Allowlist mode, remove all domains so the list is empty.
+   - Verify the prominent amber warning banner appears:
+     `⚠️ Your allowlist is currently empty! In Allowlist mode, this will block all websites during focus sessions until you add at least one allowed site.`
+   - Add a site back (or click **"+ Docs & Learning"**): verify the banner immediately disappears.
+3. **Allowlist Blocking & Subdomain Access During Focus**:
+   - Add `github.com` to your allowlist. Ensure sites like `reddit.com` or `twitter.com` are NOT in the allowlist.
+   - Start a focus session.
+   - Open a new tab and navigate to `https://reddit.com`:
+     - Verify it is redirected to `blocked.html`.
+     - Verify the explanation text adapts dynamically: `"Only your allowed sites are available during focus."`
+   - Open a new tab and navigate to `https://github.com` and `https://api.github.com`:
+     - Verify both load normally without any blockage.
+   - Open `http://localhost:3000` or any internal tool:
+     - Verify localhost is NEVER blocked.
+4. **Already-Open Tabs Redirection & Automatic Restoration**:
+   - Before starting a focus session, open tabs with `https://news.ycombinator.com` and `https://github.com`.
+   - Start the focus session in Allowlist mode.
+   - Verify the `news.ycombinator.com` tab is immediately redirected to `blocked.html?url=https%3A%2F%2Fnews.ycombinator.com`.
+   - Verify the `github.com` tab remains intact.
+   - When the focus phase finishes or is reset:
+     - Verify the blocked tab automatically navigates back to `https://news.ycombinator.com`.
+5. **Mid-Session Mode Switching**:
+   - Start a focus session in Blocklist mode with only `twitter.com` blocked.
+   - Visit `wikipedia.org` (works fine).
+   - Switch mode to Allowlist in Options and save.
+   - Re-visit `wikipedia.org`: verify it is now blocked because it is not on the allowlist.
+   - Switch back to Blocklist mode: verify `wikipedia.org` is accessible again.
+6. **Service Worker Restart Persistence**:
+   - While in Allowlist mode during an active focus session, open `chrome://extensions`.
+   - Click **"Service Worker (Inspect)"** to open DevTools, go to Application -> Service Workers, and click **Stop**.
+   - Attempt to navigate to an unallowed website in a tab:
+   - Verify DNR rules remain active and the request is redirected to `blocked.html`.
+   - When the service worker wakes up on the next timer tick or message, verify it seamlessly maintains Allowlist DNR rules.
 
 ---
 

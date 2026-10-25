@@ -85,30 +85,75 @@
         </div>
       </section>
 
-      <!-- Section 2: Website Blocker -->
+      <!-- Section 2: Website Filtering (Blocklist or Allowlist) -->
       <section class="card">
         <div class="card-header">
           <div class="card-icon">🛡️</div>
           <div>
-            <h2 class="card-title">Distraction Blocker</h2>
-            <p class="card-desc">These sites will redirect to the "Stay Focused" page during focus sessions.</p>
+            <h2 class="card-title">Website Filtering</h2>
+            <p class="card-desc">Choose between blocking specific sites or allowing only approved work sites</p>
           </div>
         </div>
         <div class="card-body">
-          <form id="add-site-form" class="site-input-group">
-            <input type="text" id="site-input" placeholder="e.g. reddit.com or twitter.com" autocomplete="off">
-            <button type="submit" class="btn btn-primary" id="btn-add-site">Block Site</button>
-          </form>
-
-          <div class="presets-row">
-            <span class="preset-label">Quick Add:</span>
-            <button type="button" class="preset-chip" data-preset="social">+ Social Media</button>
-            <button type="button" class="preset-chip" data-preset="video">+ Video & Streaming</button>
-            <button type="button" class="preset-chip" data-preset="news">+ News & Forums</button>
+          <!-- Blocking Mode Selector -->
+          <div class="mode-selector-wrapper">
+            <div class="mode-segmented" role="radiogroup" aria-label="Blocking Mode">
+              <button type="button" class="mode-tab active" id="mode-tab-blocklist" data-mode="blocklist" role="radio" aria-checked="true">
+                🛡️ Blocklist Mode
+              </button>
+              <button type="button" class="mode-tab" id="mode-tab-allowlist" data-mode="allowlist" role="radio" aria-checked="false">
+                ✨ Allowlist Mode (Strict)
+              </button>
+            </div>
+            <p class="mode-help-text" id="mode-help-text">
+              Block specific distracting sites while keeping the rest of the web accessible.
+            </p>
           </div>
 
-          <div class="blocked-sites-list" id="blocked-sites-container">
-            <!-- Dynamically populated tags -->
+          <!-- Sub-Section A: Blocklist Mode View -->
+          <div id="section-blocklist">
+            <form id="add-site-form" class="site-input-group">
+              <input type="text" id="site-input" placeholder="e.g. reddit.com or twitter.com" autocomplete="off">
+              <button type="submit" class="btn btn-primary" id="btn-add-site">Block Site</button>
+            </form>
+
+            <div class="presets-row">
+              <span class="preset-label">Quick Add:</span>
+              <button type="button" class="preset-chip" data-preset="social">+ Social Media</button>
+              <button type="button" class="preset-chip" data-preset="video">+ Video & Streaming</button>
+              <button type="button" class="preset-chip" data-preset="news">+ News & Forums</button>
+            </div>
+
+            <div class="blocked-sites-list" id="blocked-sites-container">
+              <!-- Dynamically populated tags -->
+            </div>
+          </div>
+
+          <!-- Sub-Section B: Allowlist Mode View -->
+          <div id="section-allowlist" style="display: none;">
+            <!-- Warning banner when allowlist is empty -->
+            <div id="empty-allowlist-warning" class="empty-warning-banner" style="display: none;">
+              <span>⚠️</span>
+              <div>
+                <strong>Your allowlist is currently empty!</strong> In Allowlist mode, this will block <em>all</em> websites during focus sessions until you add at least one allowed site.
+              </div>
+            </div>
+
+            <form id="add-allowed-site-form" class="site-input-group">
+              <input type="text" id="allowed-site-input" placeholder="e.g. github.com or stackoverflow.com" autocomplete="off">
+              <button type="submit" class="btn btn-primary" id="btn-add-allowed-site">Allow Site</button>
+            </form>
+
+            <div class="presets-row">
+              <span class="preset-label">Quick Add:</span>
+              <button type="button" class="preset-chip" data-preset="learning">+ Docs & Learning</button>
+              <button type="button" class="preset-chip" data-preset="work">+ Work & Tools</button>
+              <button type="button" class="preset-chip" data-preset="search">+ Reference</button>
+            </div>
+
+            <div class="blocked-sites-list" id="allowed-sites-container">
+              <!-- Dynamically populated tags -->
+            </div>
           </div>
         </div>
       </section>

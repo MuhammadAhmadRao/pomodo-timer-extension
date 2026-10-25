@@ -42,7 +42,7 @@
       "description": "Skip to the next timer phase"
     }
   },
-  "host_permissions": [
+  "optional_host_permissions": [
     "http://*/*",
     "https://*/*"
   ],

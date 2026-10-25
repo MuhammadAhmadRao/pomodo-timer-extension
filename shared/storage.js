@@ -25,7 +25,14 @@
     tabTitleTimerEnabled: true,
     theme: "dark",               // 'dark' | 'light' | 'system'
     dailyGoalMinutes: 120,      // target daily focus in minutes
-    strictModeEnabled: false    // unbreakable focus mode
+    strictModeEnabled: false,   // unbreakable focus mode
+    blockingMode: "blocklist",  // 'blocklist' | 'allowlist'
+    allowedSites: [
+      "github.com",
+      "stackoverflow.com",
+      "developer.mozilla.org",
+      "docs.google.com"
+    ]
   };
 
   const DEFAULT_TIMER_STATE = {

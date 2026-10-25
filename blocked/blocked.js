@@ -71,6 +71,13 @@
     const remainingMs = FocusTimerStorage.computeRemaining(timerState);
     timeDisplay.textContent = FocusTimerStorage.formatTime(remainingMs);
 
+    // Adapt text for Allowlist mode vs Blocklist mode
+    if (settings && settings.blockingMode === "allowlist") {
+      quoteText.textContent = "Only your allowed sites are available during focus.";
+      quoteText.style.fontStyle = "normal";
+      quoteText.style.fontWeight = "600";
+    }
+
     // In Strict Mode: Hide Allow 5 Minutes button completely
     const isStrict = Boolean(settings && settings.strictModeEnabled);
     if (unblockActionWrapper) {
@@ -83,9 +90,11 @@
     // If session ended or phase switched to break, redirect back or unblock
     if (timerState.phase !== "focus" || !timerState.isRunning) {
       timeDisplay.textContent = "Break Time!";
-      if (document.referrer && !document.referrer.includes(chrome.runtime.id)) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const targetUrl = urlParams.get("url") || document.referrer;
+      if (targetUrl && !targetUrl.includes(chrome.runtime.id)) {
         setTimeout(() => {
-          window.location.href = document.referrer;
+          window.location.href = targetUrl;
         }, 1200);
       }
     }
@@ -139,8 +148,10 @@
 
       chrome.runtime.sendMessage({ action: "ALLOW_5_MINUTES" }, (res) => {
         if (res && res.success) {
-          if (document.referrer && !document.referrer.includes(chrome.runtime.id)) {
-            window.location.href = document.referrer;
+          const urlParams = new URLSearchParams(window.location.search);
+          const targetUrl = urlParams.get("url") || document.referrer;
+          if (targetUrl && !targetUrl.includes(chrome.runtime.id)) {
+            window.location.href = targetUrl;
           } else {
             window.history.back();
           }

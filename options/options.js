@@ -13,6 +13,18 @@
   const blockedSitesContainer = document.getElementById("blocked-sites-container");
   const presetChips = document.querySelectorAll(".preset-chip");
 
+  // Allowlist elements
+  const modeTabBlocklist = document.getElementById("mode-tab-blocklist");
+  const modeTabAllowlist = document.getElementById("mode-tab-allowlist");
+  const modeHelpText = document.getElementById("mode-help-text");
+  const sectionBlocklist = document.getElementById("section-blocklist");
+  const sectionAllowlist = document.getElementById("section-allowlist");
+  const emptyAllowlistWarning = document.getElementById("empty-allowlist-warning");
+  const addAllowedSiteForm = document.getElementById("add-allowed-site-form");
+  const allowedSiteInput = document.getElementById("allowed-site-input");
+  const btnAddAllowedSite = document.getElementById("btn-add-allowed-site");
+  const allowedSitesContainer = document.getElementById("allowed-sites-container");
+
   const toggleTopPill = document.getElementById("toggle-top-pill");
   const toggleTabTitle = document.getElementById("toggle-tab-title");
   const toggleNotifications = document.getElementById("toggle-notifications");
@@ -28,13 +40,18 @@
 
   let currentSettings = { ...FocusTimerStorage.DEFAULT_SETTINGS };
   let currentBlockedSites = [...currentSettings.blockedSites];
+  let currentAllowedSites = [...(currentSettings.allowedSites || [])];
+  let currentBlockingMode = currentSettings.blockingMode || "blocklist";
   let currentTimerState = { ...FocusTimerStorage.DEFAULT_TIMER_STATE };
   let isStrictLocked = false;
 
   const PRESETS = {
     social: ["twitter.com", "x.com", "facebook.com", "instagram.com", "tiktok.com"],
     video: ["youtube.com", "netflix.com", "twitch.tv", "disneyplus.com"],
-    news: ["reddit.com", "news.ycombinator.com", "cnn.com", "bbc.com"]
+    news: ["reddit.com", "news.ycombinator.com", "cnn.com", "bbc.com"],
+    learning: ["github.com", "stackoverflow.com", "developer.mozilla.org", "docs.google.com"],
+    work: ["notion.so", "figma.com", "slack.com", "linear.app"],
+    search: ["google.com", "wikipedia.org"]
   };
 
   async function init() {
@@ -42,6 +59,8 @@
     if (data.settings) {
       currentSettings = { ...currentSettings, ...data.settings };
       currentBlockedSites = [...(currentSettings.blockedSites || [])];
+      currentAllowedSites = [...(currentSettings.allowedSites || [])];
+      currentBlockingMode = currentSettings.blockingMode || "blocklist";
     }
     if (data.timerState) {
       currentTimerState = { ...currentTimerState, ...data.timerState };
@@ -70,9 +89,26 @@
     longBreakInput.disabled = isStrictLocked;
     roundsTargetInput.disabled = isStrictLocked;
 
-    // Lock/unlock blocker
+    // Lock/unlock mode switch
+    if (modeTabBlocklist) {
+      modeTabBlocklist.disabled = isStrictLocked;
+      modeTabBlocklist.style.opacity = isStrictLocked ? "0.6" : "1";
+      modeTabBlocklist.style.cursor = isStrictLocked ? "not-allowed" : "pointer";
+    }
+    if (modeTabAllowlist) {
+      modeTabAllowlist.disabled = isStrictLocked;
+      modeTabAllowlist.style.opacity = isStrictLocked ? "0.6" : "1";
+      modeTabAllowlist.style.cursor = isStrictLocked ? "not-allowed" : "pointer";
+    }
+
+    // Lock/unlock blocklist inputs
     siteInput.disabled = isStrictLocked;
     if (btnAddSite) btnAddSite.disabled = isStrictLocked;
+
+    // Lock/unlock allowlist inputs
+    if (allowedSiteInput) allowedSiteInput.disabled = isStrictLocked;
+    if (btnAddAllowedSite) btnAddAllowedSite.disabled = isStrictLocked;
+
     presetChips.forEach((chip) => {
       chip.disabled = isStrictLocked;
       chip.style.opacity = isStrictLocked ? "0.5" : "1";
@@ -83,8 +119,9 @@
     if (toggleStrictMode) toggleStrictMode.disabled = isStrictLocked;
     btnResetDefaults.disabled = isStrictLocked;
 
-    // Refresh blocked site tags to enable/disable remove buttons
+    // Refresh site tags to enable/disable remove buttons
     renderBlockedSites();
+    renderAllowedSites();
   }
 
   function applyTheme(theme) {
@@ -99,6 +136,80 @@
       } else {
         document.documentElement.setAttribute("data-theme", "light");
       }
+    }
+  }
+
+  function applyModeUI(mode) {
+    currentBlockingMode = mode;
+    if (mode === "allowlist") {
+      if (modeTabBlocklist) {
+        modeTabBlocklist.classList.remove("active");
+        modeTabBlocklist.setAttribute("aria-checked", "false");
+      }
+      if (modeTabAllowlist) {
+        modeTabAllowlist.classList.add("active");
+        modeTabAllowlist.setAttribute("aria-checked", "true");
+      }
+      if (modeHelpText) {
+        modeHelpText.textContent = "Allow only approved sites during focus sessions. All other websites will be blocked.";
+      }
+      if (sectionBlocklist) sectionBlocklist.style.display = "none";
+      if (sectionAllowlist) sectionAllowlist.style.display = "block";
+    } else {
+      if (modeTabBlocklist) {
+        modeTabBlocklist.classList.add("active");
+        modeTabBlocklist.setAttribute("aria-checked", "true");
+      }
+      if (modeTabAllowlist) {
+        modeTabAllowlist.classList.remove("active");
+        modeTabAllowlist.setAttribute("aria-checked", "false");
+      }
+      if (modeHelpText) {
+        modeHelpText.textContent = "Block specific distracting sites while keeping the rest of the web accessible.";
+      }
+      if (sectionBlocklist) sectionBlocklist.style.display = "block";
+      if (sectionAllowlist) sectionAllowlist.style.display = "none";
+    }
+    updateEmptyAllowlistWarning();
+  }
+
+  async function setBlockingMode(mode) {
+    if (isStrictLocked) return;
+
+    if (mode === "allowlist") {
+      // Request optional host permission if not already granted
+      if (chrome.permissions && chrome.permissions.request) {
+        const hasPerm = await new Promise((resolve) => {
+          chrome.permissions.contains({ origins: ["http://*/*", "https://*/*"] }, resolve);
+        });
+
+        if (!hasPerm) {
+          const granted = await new Promise((resolve) => {
+            chrome.permissions.request(
+              {
+                origins: ["http://*/*", "https://*/*"]
+              },
+              (result) => resolve(Boolean(result))
+            );
+          });
+
+          if (!granted) {
+            showToast("Allowlist mode requires website access to block unapproved sites.");
+            return;
+          }
+        }
+      }
+    }
+
+    applyModeUI(mode);
+  }
+
+  function updateEmptyAllowlistWarning() {
+    if (!emptyAllowlistWarning) return;
+    if (currentBlockingMode === "allowlist" && currentAllowedSites.length === 0) {
+      emptyAllowlistWarning.style.display = "flex";
+    } else {
+      emptyAllowlistWarning.style.display = "none";
     }
   }
 
@@ -120,7 +231,13 @@
     }
     selectTheme.value = currentSettings.theme || "dark";
 
+    currentBlockingMode = currentSettings.blockingMode || "blocklist";
+    currentAllowedSites = [...(currentSettings.allowedSites || [])];
+    currentBlockedSites = [...(currentSettings.blockedSites || [])];
+
+    applyModeUI(currentBlockingMode);
     renderBlockedSites();
+    renderAllowedSites();
   }
 
   function cleanDomain(input) {
@@ -162,6 +279,40 @@
     });
   }
 
+  function renderAllowedSites() {
+    if (!allowedSitesContainer) return;
+    allowedSitesContainer.innerHTML = "";
+
+    if (currentAllowedSites.length === 0) {
+      const emptyNote = document.createElement("span");
+      emptyNote.style.color = "var(--text-muted)";
+      emptyNote.style.fontSize = "13px";
+      emptyNote.textContent = "No allowed sites added. All websites will be blocked during focus!";
+      allowedSitesContainer.appendChild(emptyNote);
+      updateEmptyAllowlistWarning();
+      return;
+    }
+
+    currentAllowedSites.forEach((domain) => {
+      const tag = document.createElement("div");
+      tag.className = "site-tag allowed";
+      tag.innerHTML = `
+        <span>${domain}</span>
+        <button type="button" class="remove-btn" title="Remove ${domain}" ${isStrictLocked ? "disabled style='opacity:0.4;cursor:not-allowed;'" : ""}>&times;</button>
+      `;
+
+      tag.querySelector(".remove-btn").addEventListener("click", () => {
+        if (!isStrictLocked) {
+          removeAllowedSite(domain);
+        }
+      });
+
+      allowedSitesContainer.appendChild(tag);
+    });
+
+    updateEmptyAllowlistWarning();
+  }
+
   function addSite(domain) {
     if (isStrictLocked) return;
     const cleaned = cleanDomain(domain);
@@ -179,7 +330,41 @@
     renderBlockedSites();
   }
 
-  // Form submit for adding site
+  function addAllowedSite(domain) {
+    if (isStrictLocked) return;
+    const cleaned = cleanDomain(domain);
+    if (!cleaned) return;
+    if (cleaned === "localhost" || cleaned === "127.0.0.1") {
+      showToast("localhost is always accessible and never blocked.");
+      return;
+    }
+
+    if (!currentAllowedSites.includes(cleaned)) {
+      currentAllowedSites.push(cleaned);
+      renderAllowedSites();
+    }
+  }
+
+  function removeAllowedSite(domain) {
+    if (isStrictLocked) return;
+    currentAllowedSites = currentAllowedSites.filter((s) => s !== domain);
+    renderAllowedSites();
+  }
+
+  // Mode switcher listeners
+  if (modeTabBlocklist) {
+    modeTabBlocklist.addEventListener("click", () => {
+      setBlockingMode("blocklist");
+    });
+  }
+
+  if (modeTabAllowlist) {
+    modeTabAllowlist.addEventListener("click", () => {
+      setBlockingMode("allowlist");
+    });
+  }
+
+  // Form submit for adding blocked site
   addSiteForm.addEventListener("submit", (e) => {
     e.preventDefault();
     if (isStrictLocked) return;
@@ -189,13 +374,29 @@
     }
   });
 
-  // Preset chips
+  // Form submit for adding allowed site
+  if (addAllowedSiteForm) {
+    addAllowedSiteForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (isStrictLocked) return;
+      if (allowedSiteInput && allowedSiteInput.value) {
+        addAllowedSite(allowedSiteInput.value);
+        allowedSiteInput.value = "";
+      }
+    });
+  }
+
+  // Preset chips (blocklist and allowlist)
   presetChips.forEach((chip) => {
     chip.addEventListener("click", () => {
       if (isStrictLocked) return;
       const presetKey = chip.dataset.preset;
       const sites = PRESETS[presetKey] || [];
-      sites.forEach(addSite);
+      if (["learning", "work", "search"].includes(presetKey)) {
+        sites.forEach(addAllowedSite);
+      } else {
+        sites.forEach(addSite);
+      }
     });
   });
 
@@ -213,7 +414,9 @@
       longBreakDuration: isStrictLocked ? currentSettings.longBreakDuration : Math.max(1, parseInt(longBreakInput.value, 10) || 15),
       roundsBeforeLongBreak: isStrictLocked ? currentSettings.roundsBeforeLongBreak : Math.max(1, parseInt(roundsTargetInput.value, 10) || 4),
       dailyGoalMinutes: Math.max(1, parseInt(dailyGoalInput ? dailyGoalInput.value : 120, 10) || 120),
+      blockingMode: isStrictLocked ? (currentSettings.blockingMode || "blocklist") : currentBlockingMode,
       blockedSites: isStrictLocked ? [...currentSettings.blockedSites] : [...currentBlockedSites],
+      allowedSites: isStrictLocked ? [...(currentSettings.allowedSites || [])] : [...currentAllowedSites],
       strictModeEnabled: isStrictLocked ? currentSettings.strictModeEnabled : (toggleStrictMode ? toggleStrictMode.checked : false),
       topPillEnabled: toggleTopPill.checked,
       floatingWidgetEnabled: toggleTopPill.checked,
@@ -245,6 +448,8 @@
     if (confirm("Reset all settings and timer durations back to default values?")) {
       currentSettings = { ...FocusTimerStorage.DEFAULT_SETTINGS };
       currentBlockedSites = [...currentSettings.blockedSites];
+      currentAllowedSites = [...(currentSettings.allowedSites || [])];
+      currentBlockingMode = currentSettings.blockingMode || "blocklist";
       await FocusTimerStorage.setStorage({ settings: currentSettings });
       populateUI();
       applyTheme(currentSettings.theme);

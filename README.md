@@ -73,6 +73,17 @@ A clean, modern, zero-dependency Chrome extension (Manifest V3) combining a cust
      - `storage`: Preserves settings, timer state, and session analytics locally.
      - `notifications`: Desktop transition chimes, site block confirmations, and strict mode alerts.
 
+10. **Allowlist Mode (Block Everything Except Approved Sites)**:
+   - **Dual Blocking Modes**: Choose between standard **Blocklist Mode** (block distracting sites) or **Allowlist Mode** (strict work mode: block *every* website except approved domains).
+   - **Quick-Add Presets**: One-click quick-add chips for common productive tools: Docs & Learning (`github.com`, `stackoverflow.com`, `developer.mozilla.org`, `docs.google.com`), Work & Tools (`notion.so`, `figma.com`, `slack.com`, `linear.app`), and Reference (`google.com`, `wikipedia.org`).
+   - **Empty Allowlist Protection**: Displays a prominent warning if the allowlist is empty, notifying users that all websites will be blocked during focus.
+   - **Smart Tab Redirection & Restoration**: When focus starts, already-open tabs not on the allowlist are redirected to `blocked.html?url=...`. When the focus phase finishes or resets, they are automatically restored to their original URLs.
+   - **Always-Safe Pages**: Extension pages, `chrome://` internal settings, and local development servers (`localhost`, `127.0.0.1`) are never blocked.
+   - **Permissions Trade-Off & Optional Host Permissions**:
+     - In Chrome Manifest V3 DeclarativeNetRequest, redirecting arbitrary external websites requires host permissions matching the redirected URLs.
+     - Rather than asking for scary broad host permissions (`http://*/*`, `https://*/*`) upfront at installation time, Focus Timer declares them as `optional_host_permissions`.
+     - When you turn on Allowlist Mode in Options, the extension prompts for host access on-demand with a clear explanation, ensuring standard blocklist users never see intrusive permission warnings.
+
 ---
 
 ## 🚀 How to Install and Run (for Beginners)
@@ -117,8 +128,11 @@ pomodo-timer-extension/
 │   ├── stats.js               # Pure streak, aggregation, top label, and CSV functions
 │   └── sound.js               # Audio synthesis for transition chimes (Web Audio API)
 ├── test/
-│   ├── stats.test.js          # Unit tests for streaks, timezones, and aggregations
-│   └── session-log.test.js    # Unit tests for session log idempotency and pruning
+│   ├── stats.test.js              # Unit tests for streaks, timezones, and aggregations
+│   ├── session-log.test.js        # Unit tests for session log idempotency and pruning
+│   ├── strict-mode.test.js        # Unit tests for background strict enforcement & emergency exit
+│   ├── commands-contextmenu.test.js # Unit tests for keyboard commands & context menus
+│   └── allowlist-mode.test.js     # Unit tests for Allowlist DNR rules, tab redirects & warnings
 └── icons/
     ├── icon16.png
     ├── icon32.png

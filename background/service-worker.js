@@ -268,6 +268,7 @@ function notifyClients(message) {
  * Updates declarativeNetRequest dynamic blocking rules:
  * - Active ONLY when phase === 'focus' and isRunning === true
  * - Cleared during breaks, paused state, or when focus is not running.
+ * - Supports both 'blocklist' and 'allowlist' modes in a single serialized updateDynamicRules call.
  */
 async function syncBlockingRules(settings, timerState) {
   const isTempUnblocked = Boolean(
@@ -284,24 +285,76 @@ async function syncBlockingRules(settings, timerState) {
         addRules: []
       });
     }
+    // Restore any open tabs that were redirected to blocked.html back to their original pages
+    await restoreBlockedTabs();
     return;
   }
 
-  // Generate dynamic rules from blockedSites
-  const blockedSites = settings.blockedSites || [];
   const redirectUrl = chrome.runtime.getURL("blocked/blocked.html");
-
   const newRules = [];
   let ruleIdCounter = 1;
 
-  for (const site of blockedSites) {
-    const cleanDomain = site
-      .trim()
-      .toLowerCase()
-      .replace(/^https?:\/\//, "")
-      .replace(/\/.*$/, "");
+  if (settings.blockingMode === "allowlist") {
+    // ALLOWLIST MODE:
+    // 1. Higher-priority allow rules for localhost and 127.0.0.1 (Priority: 2)
+    newRules.push({
+      id: ruleIdCounter++,
+      priority: 2,
+      action: { type: "allow" },
+      condition: {
+        urlFilter: "||localhost^",
+        resourceTypes: ["main_frame"]
+      }
+    });
 
-    if (!cleanDomain) continue;
+    newRules.push({
+      id: ruleIdCounter++,
+      priority: 2,
+      action: { type: "allow" },
+      condition: {
+        urlFilter: "||127.0.0.1^",
+        resourceTypes: ["main_frame"]
+      }
+    });
+
+    // 2. Higher-priority allow rules for each allowlisted domain (including subdomains) (Priority: 2)
+    const allowedSites = settings.allowedSites || [];
+    for (const site of allowedSites) {
+      const cleanDomain = site
+        .trim()
+        .toLowerCase()
+        .replace(/^https?:\/\//, "")
+        .replace(/^www\./, "")
+        .replace(/\/.*$/, "");
+
+      if (!cleanDomain) continue;
+
+      newRules.push({
+        id: ruleIdCounter++,
+        priority: 2,
+        action: { type: "allow" },
+        condition: {
+          urlFilter: `||${cleanDomain}^`,
+          resourceTypes: ["main_frame"]
+        }
+      });
+    }
+
+    // 3. Low-priority redirect rules for all http and https main_frame requests (Priority: 1)
+    // Never matches extension pages or chrome:// (anchored to http/https), and excludes localhost
+    newRules.push({
+      id: ruleIdCounter++,
+      priority: 1,
+      action: {
+        type: "redirect",
+        redirect: { url: redirectUrl }
+      },
+      condition: {
+        urlFilter: "|http://*",
+        excludedRequestDomains: ["localhost", "127.0.0.1"],
+        resourceTypes: ["main_frame"]
+      }
+    });
 
     newRules.push({
       id: ruleIdCounter++,
@@ -311,15 +364,139 @@ async function syncBlockingRules(settings, timerState) {
         redirect: { url: redirectUrl }
       },
       condition: {
-        urlFilter: `||${cleanDomain}^`,
+        urlFilter: "|https://*",
+        excludedRequestDomains: ["localhost", "127.0.0.1"],
         resourceTypes: ["main_frame"]
       }
     });
+
+    // Redirect already-open tabs that are not on the allowlist
+    await redirectUnallowedOpenTabs(allowedSites);
+  } else {
+    // BLOCKLIST MODE:
+    const blockedSites = settings.blockedSites || [];
+    for (const site of blockedSites) {
+      const cleanDomain = site
+        .trim()
+        .toLowerCase()
+        .replace(/^https?:\/\//, "")
+        .replace(/\/.*$/, "");
+
+      if (!cleanDomain) continue;
+
+      newRules.push({
+        id: ruleIdCounter++,
+        priority: 1,
+        action: {
+          type: "redirect",
+          redirect: { url: redirectUrl }
+        },
+        condition: {
+          urlFilter: `||${cleanDomain}^`,
+          resourceTypes: ["main_frame"]
+        }
+      });
+    }
+
+    // Redirect already-open tabs matching the blocklist
+    await redirectBlockedOpenTabs(blockedSites);
   }
 
   await chrome.declarativeNetRequest.updateDynamicRules({
     removeRuleIds: existingRuleIds,
     addRules: newRules
+  });
+}
+
+/**
+ * Redirects already-open tabs that are not on the allowlist
+ */
+async function redirectUnallowedOpenTabs(allowedSites) {
+  if (!chrome.tabs || !chrome.tabs.query) return;
+
+  const cleanAllowed = (allowedSites || [])
+    .map((s) => s.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, ""))
+    .filter(Boolean);
+
+  const blockedPrefix = chrome.runtime.getURL("blocked/blocked.html");
+
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach((tab) => {
+      if (!tab.id || !tab.url) return;
+      if (!/^https?:\/\//i.test(tab.url)) return;
+      if (tab.url.startsWith(blockedPrefix)) return;
+
+      try {
+        const parsed = new URL(tab.url);
+        const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+        if (host === "localhost" || host === "127.0.0.1") return;
+
+        const isAllowed = cleanAllowed.some(
+          (allowed) => host === allowed || host.endsWith("." + allowed)
+        );
+
+        if (!isAllowed) {
+          const redirectUrl = `${blockedPrefix}?url=${encodeURIComponent(tab.url)}`;
+          chrome.tabs.update(tab.id, { url: redirectUrl }).catch(() => {});
+        }
+      } catch (e) {}
+    });
+  });
+}
+
+/**
+ * Redirects already-open tabs matching the blocklist
+ */
+async function redirectBlockedOpenTabs(blockedSites) {
+  if (!chrome.tabs || !chrome.tabs.query) return;
+
+  const cleanBlocked = (blockedSites || [])
+    .map((s) => s.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, ""))
+    .filter(Boolean);
+
+  const blockedPrefix = chrome.runtime.getURL("blocked/blocked.html");
+
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach((tab) => {
+      if (!tab.id || !tab.url) return;
+      if (!/^https?:\/\//i.test(tab.url)) return;
+      if (tab.url.startsWith(blockedPrefix)) return;
+
+      try {
+        const parsed = new URL(tab.url);
+        const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+        const isBlocked = cleanBlocked.some(
+          (blocked) => host === blocked || host.endsWith("." + blocked)
+        );
+
+        if (isBlocked) {
+          const redirectUrl = `${blockedPrefix}?url=${encodeURIComponent(tab.url)}`;
+          chrome.tabs.update(tab.id, { url: redirectUrl }).catch(() => {});
+        }
+      } catch (e) {}
+    });
+  });
+}
+
+/**
+ * Restores tabs currently on blocked.html back to their original URLs when focus ends
+ */
+async function restoreBlockedTabs() {
+  if (!chrome.tabs || !chrome.tabs.query) return;
+
+  const blockedPrefix = chrome.runtime.getURL("blocked/blocked.html");
+
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach((tab) => {
+      if (!tab.id || !tab.url || !tab.url.startsWith(blockedPrefix)) return;
+      try {
+        const parsed = new URL(tab.url);
+        const originalUrl = parsed.searchParams.get("url");
+        if (originalUrl && /^https?:\/\//i.test(originalUrl)) {
+          chrome.tabs.update(tab.id, { url: originalUrl }).catch(() => {});
+        }
+      } catch (e) {}
+    });
   });
 }
 
@@ -517,11 +694,15 @@ async function syncRulesAndBadge() {
       timerState.isRunning &&
       timerState.phase === "focus"
     );
+    let title = settings.blockingMode === "allowlist"
+      ? "Allow this site during focus"
+      : "Block this site during focus";
+    if (isStrictFocus) {
+      title += " (Disabled in Strict Mode)";
+    }
     chrome.contextMenus.update("block-current-site", {
       enabled: !isStrictFocus,
-      title: isStrictFocus
-        ? "Block this site during focus (Disabled in Strict Mode)"
-        : "Block this site during focus"
+      title
     }, () => {
       if (chrome.runtime.lastError) {}
     });
@@ -913,8 +1094,10 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
 
     if (!domain) return;
 
-    const currentBlocked = [...(settings.blockedSites || [])];
-    const isDuplicate = currentBlocked.some(
+    const isAllowlistMode = settings.blockingMode === "allowlist";
+    const targetList = isAllowlistMode ? [...(settings.allowedSites || [])] : [...(settings.blockedSites || [])];
+
+    const isDuplicate = targetList.some(
       (site) => site.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "") === domain
     );
 
@@ -923,17 +1106,16 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
         type: "basic",
         iconUrl: chrome.runtime.getURL("icons/icon128.png"),
         title: "Focus Timer",
-        message: `${domain} is already in your blocklist.`,
+        message: `${domain} is already in your ${isAllowlistMode ? "allowlist" : "blocklist"}.`,
         priority: 1
       });
       return;
     }
 
-    // Add normalized domain to blocklist
-    currentBlocked.push(domain);
+    targetList.push(domain);
     const updatedSettings = {
       ...settings,
-      blockedSites: currentBlocked
+      [isAllowlistMode ? "allowedSites" : "blockedSites"]: targetList
     };
 
     await FocusTimerStorage.setStorage({ settings: updatedSettings });
@@ -942,8 +1124,10 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
     chrome.notifications.create({
       type: "basic",
       iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-      title: "🛡️ Site Blocked",
-      message: `${domain} will now be blocked during focus sessions.`,
+      title: isAllowlistMode ? "✅ Site Allowed" : "🛡️ Site Blocked",
+      message: isAllowlistMode
+        ? `${domain} will remain accessible during focus sessions.`
+        : `${domain} will now be blocked during focus sessions.`,
       priority: 1
     });
   });
